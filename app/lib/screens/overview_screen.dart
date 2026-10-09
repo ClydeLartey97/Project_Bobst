@@ -49,7 +49,7 @@ class OverviewScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const BrandMark(),
+                        BrandMark(cutoutColor: color),
                         SizedBox(height: constraints.maxHeight * 0.14),
                         Text(
                           'BOBST IS',
