@@ -102,10 +102,6 @@ class _DeveloperScreenState extends State<DeveloperScreen> {
             fontWeight: FontWeight.w800,
           ),
         ),
-        Text(
-          'Changes apply to everyone using ${widget.api.baseUrl}',
-          style: theme.textTheme.bodySmall,
-        ),
         const SizedBox(height: 16),
         _LivePreview(status: widget.status),
         _Section(

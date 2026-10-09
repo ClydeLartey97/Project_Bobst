@@ -92,10 +92,6 @@ class _RoomsScreenState extends State<RoomsScreen> {
               fontWeight: FontWeight.w800,
             ),
           ),
-          Text(
-            'Live from NYU LibCal · tap a room to book',
-            style: theme.textTheme.bodySmall,
-          ),
           const SizedBox(height: 16),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
