@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/bobst.dart';
+import '../models/dev_settings.dart';
 
 /// Override at build/run time:
 ///   flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000  (Android emulator)
@@ -18,15 +19,38 @@ class ApiClient {
   final http.Client _client;
   final String baseUrl;
 
-  Future<BobstStatus> fetchStatus() async {
-    final response = await _client
-        .get(Uri.parse('$baseUrl/api/status'))
-        .timeout(const Duration(seconds: 10));
-    if (response.statusCode != 200) {
-      throw Exception('Failed to load status (${response.statusCode})');
+  static const _timeout = Duration(seconds: 10);
+
+  Future<BobstStatus> fetchStatus() async =>
+      BobstStatus.fromJson(await _send('GET', '/api/status'));
+
+  Future<DevSettings> fetchDevSettings() async =>
+      DevSettings.fromJson(await _send('GET', '/api/dev/settings'));
+
+  Future<DevSettings> saveDevSettings(DevSettings settings) async =>
+      DevSettings.fromJson(
+        await _send('PUT', '/api/dev/settings', body: settings.toJson()),
+      );
+
+  Future<DevSettings> resetDevSettings() async =>
+      DevSettings.fromJson(await _send('DELETE', '/api/dev/settings'));
+
+  Future<Map<String, dynamic>> _send(
+    String method,
+    String path, {
+    Object? body,
+  }) async {
+    final request = http.Request(method, Uri.parse('$baseUrl$path'));
+    if (body != null) {
+      request.headers['Content-Type'] = 'application/json';
+      request.body = jsonEncode(body);
     }
-    return BobstStatus.fromJson(
-      jsonDecode(response.body) as Map<String, dynamic>,
+    final response = await http.Response.fromStream(
+      await _client.send(request).timeout(_timeout),
     );
+    if (response.statusCode != 200) {
+      throw Exception('$method $path failed (${response.statusCode})');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 }

@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Project Bobst API"
     cors_origins: List[str] = ["http://localhost:5173"]
+    dev_mode: bool = True  # exposes /api/dev/* overrides
 
 
 settings = Settings()

@@ -6,17 +6,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-Map<String, dynamic> area(String name, String noise, int people, String level) =>
-    {
-      'id': name.toLowerCase(),
-      'name': name,
-      'label': '5th Floor $name',
-      'noise': noise,
-      'occupancy': people,
-      'capacity': 70,
-      'fullness': people / 70,
-      'busyness': level,
-    };
+Map<String, dynamic> area(
+  String name,
+  String noise,
+  int people,
+  String level,
+) => {
+  'id': name.toLowerCase(),
+  'name': name,
+  'label': '5th Floor $name',
+  'noise': noise,
+  'occupancy': people,
+  'capacity': 70,
+  'fullness': people / 70,
+  'busyness': level,
+};
 
 ApiClient fakeApi({String buildingLevel = 'very_busy'}) {
   final east = area('East', 'talkative', 60, 'very_busy');
@@ -60,14 +64,18 @@ Future<void> pumpApp(WidgetTester tester, ApiClient api) async {
 }
 
 void main() {
-  testWidgets('overview shows building busyness and best spots', (tester) async {
+  testWidgets('overview shows building busyness and best spots', (
+    tester,
+  ) async {
     await pumpApp(tester, fakeApi());
 
     expect(find.text('BOBST IS'), findsOneWidget);
     expect(find.text('VERY BUSY'), findsOneWidget);
     expect(find.text('2,182 people  ·  76% full'), findsOneWidget);
     expect(find.text('5th Floor West'), findsOneWidget);
+    expect(find.text('12 people  ·  17% full'), findsOneWidget);
     expect(find.text('5th Floor East'), findsOneWidget);
+    expect(find.text('SIMULATED'), findsNothing);
   });
 
   testWidgets('overview label follows the six-step scale', (tester) async {
@@ -76,8 +84,9 @@ void main() {
     expect(find.text('NOT TOO BUSY'), findsOneWidget);
   });
 
-  testWidgets('floors tab shows headcount and expands into areas',
-      (tester) async {
+  testWidgets('floors tab shows headcount and expands into areas', (
+    tester,
+  ) async {
     await pumpApp(tester, fakeApi());
 
     await tester.tap(find.text('Floors').last);

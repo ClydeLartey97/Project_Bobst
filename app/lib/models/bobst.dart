@@ -123,6 +123,7 @@ class Building {
 class BobstStatus {
   const BobstStatus({
     required this.updatedAt,
+    required this.simulated,
     required this.building,
     required this.bestQuiet,
     required this.bestTalkative,
@@ -130,6 +131,9 @@ class BobstStatus {
   });
 
   final DateTime updatedAt;
+
+  /// Developer overrides are shaping this data.
+  final bool simulated;
   final Building building;
   final Area? bestQuiet;
   final Area? bestTalkative;
@@ -141,6 +145,7 @@ class BobstStatus {
         a == null ? null : Area.fromJson(a as Map<String, dynamic>);
     return BobstStatus(
       updatedAt: DateTime.parse(json['updated_at'] as String),
+      simulated: json['simulated'] as bool? ?? false,
       building: Building.fromJson(json['building'] as Map<String, dynamic>),
       bestQuiet: area(best['quiet']),
       bestTalkative: area(best['talkative']),

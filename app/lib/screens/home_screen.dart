@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../models/bobst.dart';
 import '../services/api_client.dart';
+import 'developer_screen.dart';
 import 'floors_screen.dart';
 import 'overview_screen.dart';
 
@@ -59,10 +61,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final native = PlatformInfo.isIOS26OrHigher();
     return AdaptiveScaffold(
       extendBody: true,
+      minimizeBehavior: TabBarMinimizeBehavior.never,
       body: Material(type: MaterialType.transparency, child: _buildBody()),
       bottomNavigationBar: AdaptiveBottomNavigationBar(
         selectedIndex: _tab,
         onTap: (i) => setState(() => _tab = i),
+        // Apple's standard tint rather than the app's violet theme colour.
+        selectedItemColor: CupertinoColors.systemBlue,
         items: [
           AdaptiveNavigationDestination(
             icon: native ? 'building.columns' : Icons.account_balance_outlined,
@@ -75,6 +80,11 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: native ? 'square.stack.3d.up' : Icons.layers_outlined,
             selectedIcon: native ? 'square.stack.3d.up.fill' : Icons.layers,
             label: 'Floors',
+          ),
+          AdaptiveNavigationDestination(
+            icon: native ? 'hammer' : Icons.build_outlined,
+            selectedIcon: native ? 'hammer.fill' : Icons.build,
+            label: 'Developer',
           ),
         ],
       ),
@@ -104,7 +114,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return switch (_tab) {
       0 => OverviewScreen(status: status, onRefresh: _load),
-      _ => FloorsScreen(status: status, onRefresh: _load),
+      1 => FloorsScreen(status: status, onRefresh: _load),
+      _ => DeveloperScreen(api: widget.api, status: status, onChanged: _load),
     };
   }
 }

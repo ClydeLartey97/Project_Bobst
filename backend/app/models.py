@@ -62,6 +62,7 @@ class BestSpots(BaseModel):
 
 class BobstResponse(BaseModel):
     updated_at: datetime
+    simulated: bool = False  # developer overrides are active
     building: Building
     best_spots: BestSpots
     floors: List[Floor]

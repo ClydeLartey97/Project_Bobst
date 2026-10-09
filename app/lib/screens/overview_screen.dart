@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../models/bobst.dart';
 import '../theme/busyness_colors.dart';
+import '../util/format.dart';
 import '../widgets/brand_mark.dart';
 import '../widgets/updated_label.dart';
 
@@ -49,7 +50,13 @@ class OverviewScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        BrandMark(cutoutColor: color),
+                        Row(
+                          children: [
+                            BrandMark(cutoutColor: color),
+                            const Spacer(),
+                            if (status.simulated) const _SimulatedBadge(),
+                          ],
+                        ),
                         SizedBox(height: constraints.maxHeight * 0.14),
                         Text(
                           'BOBST IS',
@@ -74,7 +81,7 @@ class OverviewScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 20),
                         Text(
-                          '${_thousands(building.occupancy)} people  ·  '
+                          '${thousands(building.occupancy)} people  ·  '
                           '${(building.fullness * 100).round()}% full',
                           style: theme.textTheme.titleMedium?.copyWith(
                             color: onColor,
@@ -105,6 +112,29 @@ class OverviewScreen extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SimulatedBadge extends StatelessWidget {
+  const _SimulatedBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        'SIMULATED',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1,
         ),
       ),
     );
@@ -148,6 +178,13 @@ class _SpotCard extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
+                Text(
+                  '${area.occupancy} people  ·  '
+                  '${(area.fullness * 100).round()}% full',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.85),
+                  ),
+                ),
               ],
             ),
           ),
@@ -171,6 +208,3 @@ class _SpotCard extends StatelessWidget {
     );
   }
 }
-
-String _thousands(int n) =>
-    n.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');

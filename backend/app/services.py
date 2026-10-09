@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 
+from app import dev
 from app.floors import FLOORS, Noise
 from app.models import (
     Area,
@@ -53,15 +54,23 @@ def _emptiest(areas: List[Area], noise: Noise) -> Optional[Area]:
     return min(candidates, key=lambda a: a.fullness, default=None)
 
 
-def current_status(now: datetime = None) -> BobstResponse:
+def current_status(
+    now: datetime = None, overrides: dev.DevSettings = None
+) -> BobstResponse:
     now = now or datetime.now(NYC)
+    overrides = overrides or dev.DevSettings()
+    now = dev.simulated_now(now, overrides)
     counts = source.occupancy_by_area(now)
 
     floors = []
     for info in FLOORS:
         areas = []
+        forced = overrides.floor_overrides.get(info.id)
         for area in info.areas:
-            occupancy = counts.get((info.id, area.id), 0)
+            if forced is not None:
+                occupancy = round(area.capacity * forced)
+            else:
+                occupancy = round(counts.get((info.id, area.id), 0) * overrides.crowd)
             fullness = _fullness(occupancy, area.capacity)
             areas.append(
                 Area(
@@ -97,6 +106,7 @@ def current_status(now: datetime = None) -> BobstResponse:
 
     return BobstResponse(
         updated_at=now,
+        simulated=overrides.active,
         building=Building(
             occupancy=occupancy,
             capacity=capacity,
