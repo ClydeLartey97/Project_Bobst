@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:bobst/main.dart';
 import 'package:bobst/services/api_client.dart';
+import 'package:bobst/widgets/building_view.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -40,7 +42,6 @@ ApiClient fakeApi({String buildingLevel = 'very_busy'}) {
             'fullness': 0.763,
             'busyness': buildingLevel,
           },
-          'best_spots': {'quiet': west, 'talkative': east},
           'floors': [
             {
               'id': '5',
@@ -102,17 +103,12 @@ Future<void> pumpApp(WidgetTester tester, ApiClient api) async {
 }
 
 void main() {
-  testWidgets('overview shows building busyness and best spots', (
-    tester,
-  ) async {
+  testWidgets('overview shows building busyness', (tester) async {
     await pumpApp(tester, fakeApi());
 
     expect(find.text('BOBST IS'), findsOneWidget);
     expect(find.text('VERY BUSY'), findsOneWidget);
     expect(find.text('2,182 people  ·  76% full'), findsOneWidget);
-    expect(find.text('5th Floor West'), findsOneWidget);
-    expect(find.text('12 people  ·  17% full'), findsOneWidget);
-    expect(find.text('5th Floor East'), findsOneWidget);
     expect(find.text('Simulated data'), findsNothing);
   });
 
@@ -157,5 +153,56 @@ void main() {
     await tester.tap(find.text('Free right now only'));
     await tester.pump();
     expect(find.text('LL2 Group Study Room 11'), findsNothing);
+  });
+
+  testWidgets('building turns 3D when dragged and snaps back flat', (
+    tester,
+  ) async {
+    await pumpApp(tester, fakeApi());
+    await tester.tap(find.text('Building').last);
+    await tester.pump();
+
+    final view = find.byType(BuildingView);
+    BuildingViewState state() => tester.state<BuildingViewState>(view);
+    expect(state().isFlat, isTrue);
+
+    // A big drag rotates it well away from the front: stays 3D.
+    await tester.drag(view, const Offset(150, 40));
+    await tester.pumpAndSettle(const Duration(milliseconds: 50));
+    expect(state().isFlat, isFalse);
+    expect(find.byTooltip('Flat view'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Flat view'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 50));
+    expect(state().isFlat, isTrue);
+
+    // A small nudge near the front snaps straight back to flat.
+    await tester.drag(view, const Offset(10, 0));
+    await tester.pumpAndSettle(const Duration(milliseconds: 50));
+    expect(state().isFlat, isTrue);
+  });
+
+  testWidgets('floors tab sorts and filters areas', (tester) async {
+    await pumpApp(tester, fakeApi());
+    await tester.tap(find.text('Floors').last);
+    await tester.pumpAndSettle(const Duration(milliseconds: 300));
+
+    await tester.tap(find.text('Areas'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 300));
+    double y(String label) => tester.getTopLeft(find.text(label)).dy;
+
+    // Building order keeps the backend's order: East then West.
+    expect(y('5th Floor East'), lessThan(y('5th Floor West')));
+
+    await tester.tap(find.text('Building order'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Least busy first').last);
+    await tester.pumpAndSettle(const Duration(milliseconds: 300));
+    expect(y('5th Floor West'), lessThan(y('5th Floor East')));
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Quiet'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 300));
+    expect(find.text('5th Floor West'), findsOneWidget);
+    expect(find.text('5th Floor East'), findsNothing);
   });
 }

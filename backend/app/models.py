@@ -1,10 +1,10 @@
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import List
 
 from pydantic import BaseModel
 
-from app.floors import Noise
+from app.floors import Noise, Side
 
 
 class Busyness(str, Enum):
@@ -29,6 +29,7 @@ class Area(BaseModel):
     name: str
     label: str  # e.g. "5th Floor East"
     noise: Noise
+    sides: List[Side]  # where it sits around the atrium
     occupancy: int
     capacity: int
     fullness: float  # occupancy / capacity, clamped to 0..1
@@ -53,16 +54,8 @@ class Building(BaseModel):
     busyness: Busyness
 
 
-class BestSpots(BaseModel):
-    """Emptiest area of each noise type right now."""
-
-    quiet: Optional[Area]
-    talkative: Optional[Area]
-
-
 class BobstResponse(BaseModel):
     updated_at: datetime
     simulated: bool = False  # developer overrides are active
     building: Building
-    best_spots: BestSpots
     floors: List[Floor]

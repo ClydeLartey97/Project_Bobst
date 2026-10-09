@@ -28,8 +28,7 @@ def test_status_endpoint_shape():
         assert 0 <= floor["fullness"] <= 1
     building = body["building"]
     assert building["occupancy"] == sum(f["occupancy"] for f in body["floors"])
-    assert body["best_spots"]["quiet"]["noise"] == "quiet"
-    assert body["best_spots"]["talkative"]["noise"] == "talkative"
+    assert "best_spots" not in body
 
 
 def test_busyness_scale():
@@ -65,3 +64,10 @@ def test_changes_smoothly_minute_to_minute():
     b = current_status(t + timedelta(minutes=1)).building.occupancy
     assert a != b
     assert abs(a - b) < 0.02 * at(13).building.capacity
+
+
+def test_every_area_has_a_place_and_sides_dont_overlap():
+    for floor in FLOORS:
+        taken = [side for area in floor.areas for side in area.sides]
+        assert all(area.sides for area in floor.areas), floor.id
+        assert len(taken) == len(set(taken)), floor.id

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../models/bobst.dart';
 import '../services/api_client.dart';
+import 'building_screen.dart';
 import 'developer_screen.dart';
 import 'floors_screen.dart';
 import 'overview_screen.dart';
@@ -83,6 +84,11 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Floors',
           ),
           AdaptiveNavigationDestination(
+            icon: native ? 'building.2' : Icons.apartment_outlined,
+            selectedIcon: native ? 'building.2.fill' : Icons.apartment,
+            label: 'Building',
+          ),
+          AdaptiveNavigationDestination(
             icon: native
                 ? 'door.left.hand.closed'
                 : Icons.meeting_room_outlined,
@@ -123,7 +129,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return switch (_tab) {
       0 => OverviewScreen(status: status, onRefresh: _load),
       1 => FloorsScreen(status: status, onRefresh: _load),
-      2 => RoomsScreen(api: widget.api),
+      2 => BuildingScreen(status: status),
+      3 => RoomsScreen(api: widget.api),
       _ => DeveloperScreen(api: widget.api, status: status, onChanged: _load),
     };
   }

@@ -1,12 +1,11 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 from zoneinfo import ZoneInfo
 
 from app import dev
 from app.floors import FLOORS, Noise
 from app.models import (
     Area,
-    BestSpots,
     BobstResponse,
     Building,
     Busyness,
@@ -49,11 +48,6 @@ def _floor_noise(areas: List[Area]) -> FloorNoise:
     return FloorNoise.mixed
 
 
-def _emptiest(areas: List[Area], noise: Noise) -> Optional[Area]:
-    candidates = [a for a in areas if a.noise == noise]
-    return min(candidates, key=lambda a: a.fullness, default=None)
-
-
 def current_status(
     now: datetime = None, overrides: dev.DevSettings = None
 ) -> BobstResponse:
@@ -78,6 +72,7 @@ def current_status(
                     name=area.name,
                     label=f"{info.short_name} {area.name}",
                     noise=area.noise,
+                    sides=list(area.sides),
                     occupancy=occupancy,
                     capacity=area.capacity,
                     fullness=fullness,
@@ -102,7 +97,6 @@ def current_status(
     occupancy = sum(f.occupancy for f in floors)
     capacity = sum(f.capacity for f in floors)
     fullness = _fullness(occupancy, capacity)
-    all_areas = [a for f in floors for a in f.areas]
 
     return BobstResponse(
         updated_at=now,
@@ -112,10 +106,6 @@ def current_status(
             capacity=capacity,
             fullness=fullness,
             busyness=busyness_for(fullness),
-        ),
-        best_spots=BestSpots(
-            quiet=_emptiest(all_areas, Noise.quiet),
-            talkative=_emptiest(all_areas, Noise.talkative),
         ),
         floors=floors,
     )

@@ -21,6 +21,9 @@ enum Busyness {
   };
 }
 
+/// Sides of Bobst's central atrium.
+enum Side { north, east, south, west }
+
 enum Noise {
   quiet('Quiet'),
   talkative('Talkative'),
@@ -37,6 +40,7 @@ class Area {
     required this.name,
     required this.label,
     required this.noise,
+    required this.sides,
     required this.occupancy,
     required this.capacity,
     required this.fullness,
@@ -47,6 +51,7 @@ class Area {
   final String name;
   final String label;
   final Noise noise;
+  final List<Side> sides;
   final int occupancy;
   final int capacity;
   final double fullness;
@@ -57,6 +62,10 @@ class Area {
     name: json['name'] as String,
     label: json['label'] as String,
     noise: Noise.values.byName(json['noise'] as String),
+    sides: [
+      for (final s in json['sides'] as List? ?? const [])
+        Side.values.byName(s as String),
+    ],
     occupancy: json['occupancy'] as int,
     capacity: json['capacity'] as int,
     fullness: (json['fullness'] as num).toDouble(),
@@ -125,8 +134,6 @@ class BobstStatus {
     required this.updatedAt,
     required this.simulated,
     required this.building,
-    required this.bestQuiet,
-    required this.bestTalkative,
     required this.floors,
   });
 
@@ -135,20 +142,13 @@ class BobstStatus {
   /// Developer overrides are shaping this data.
   final bool simulated;
   final Building building;
-  final Area? bestQuiet;
-  final Area? bestTalkative;
   final List<Floor> floors;
 
   factory BobstStatus.fromJson(Map<String, dynamic> json) {
-    final best = json['best_spots'] as Map<String, dynamic>;
-    Area? area(Object? a) =>
-        a == null ? null : Area.fromJson(a as Map<String, dynamic>);
     return BobstStatus(
       updatedAt: DateTime.parse(json['updated_at'] as String),
       simulated: json['simulated'] as bool? ?? false,
       building: Building.fromJson(json['building'] as Map<String, dynamic>),
-      bestQuiet: area(best['quiet']),
-      bestTalkative: area(best['talkative']),
       floors: (json['floors'] as List)
           .map((f) => Floor.fromJson(f as Map<String, dynamic>))
           .toList(),
