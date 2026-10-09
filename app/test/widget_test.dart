@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:bobst/main.dart';
 import 'package:bobst/services/api_client.dart';
 import 'package:bobst/widgets/building_view.dart';
@@ -145,12 +146,12 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('Group Study Rooms  1/2'), findsOneWidget);
+    expect(find.text('Group Study Rooms  1/2 free'), findsOneWidget);
     expect(find.text('LL2 Group Study Room 10'), findsOneWidget);
     expect(find.textContaining('Free until'), findsOneWidget);
     expect(find.textContaining('Booked · free at'), findsOneWidget);
 
-    await tester.tap(find.text('Free right now only'));
+    await tester.tap(find.byType(AdaptiveSwitch));
     await tester.pump();
     expect(find.text('LL2 Group Study Room 11'), findsNothing);
   });
@@ -194,14 +195,18 @@ void main() {
     // Building order keeps the backend's order: East then West.
     expect(y('5th Floor East'), lessThan(y('5th Floor West')));
 
-    await tester.tap(find.text('Building order'));
-    await tester.pumpAndSettle(const Duration(milliseconds: 300));
-    await tester.tap(find.text('Least busy first').last);
-    await tester.pumpAndSettle(const Duration(milliseconds: 300));
-    expect(y('5th Floor West'), lessThan(y('5th Floor East')));
+    Future<void> pick(String option) async {
+      await tester.tap(find.byIcon(Icons.filter_list));
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
+      await tester.tap(find.text(option).last);
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
+    }
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Quiet'));
-    await tester.pumpAndSettle(const Duration(milliseconds: 300));
+    await pick('Least busy first');
+    expect(y('5th Floor West'), lessThan(y('5th Floor East')));
+    expect(find.text('Least busy first · Any noise'), findsOneWidget);
+
+    await pick('Quiet');
     expect(find.text('5th Floor West'), findsOneWidget);
     expect(find.text('5th Floor East'), findsNothing);
   });

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -93,30 +94,36 @@ class _RoomsScreenState extends State<RoomsScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (var i = 0; i < groups.length; i++)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: ChoiceChip(
-                      label: Text(
-                        '${groups[i].name}  ${groups[i].freeNow}/${groups[i].total}',
-                      ),
+          Row(
+            children: [
+              AdaptivePopupMenuButton.text<int>(
+                label: '${group.name}  ${group.freeNow}/${group.total} free',
+                buttonStyle: PopupButtonStyle.gray,
+                items: [
+                  for (var i = 0; i < groups.length; i++)
+                    AdaptivePopupMenuItem<int>(
+                      label: groups[i].name,
+                      subtitle:
+                          '${groups[i].freeNow} of ${groups[i].total} free now',
+                      value: i,
                       selected: i == _selected,
-                      onSelected: (_) => setState(() => _selected = i),
                     ),
-                  ),
-              ],
-            ),
+                ],
+                onSelected: (i, _) => setState(() => _selected = i),
+              ),
+            ],
           ),
-          SwitchListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-            title: const Text('Free right now only'),
-            value: _freeOnly,
-            onChanged: (v) => setState(() => _freeOnly = v),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Expanded(child: Text('Free right now only')),
+              AdaptiveSwitch(
+                value: _freeOnly,
+                onChanged: (v) => setState(() => _freeOnly = v),
+              ),
+            ],
           ),
+          const SizedBox(height: 12),
           if (group.total == 0)
             _Message(
               group.error != null

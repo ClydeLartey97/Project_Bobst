@@ -1,3 +1,4 @@
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 
 import '../models/bobst.dart';
@@ -49,6 +50,44 @@ class _FloorsScreenState extends State<FloorsScreen> {
     return list;
   }
 
+  /// Native pull-down menu with the sort order and the noise filter.
+  Widget _filterMenu() {
+    final native = PlatformInfo.isIOS26OrHigher();
+    return AdaptivePopupMenuButton.icon<Object>(
+      icon: native ? 'line.3.horizontal.decrease.circle' : Icons.filter_list,
+      items: [
+        const AdaptivePopupMenuDivider(title: 'Sort'),
+        for (final sort in _Sort.values)
+          AdaptivePopupMenuItem<Object>(
+            label: sort.label,
+            value: sort,
+            selected: sort == _sort,
+          ),
+        const AdaptivePopupMenuDivider(title: 'Noise'),
+        for (final (noise, label) in [
+          (null, 'Any noise'),
+          (Noise.quiet, 'Quiet'),
+          (Noise.talkative, 'Talkative'),
+        ])
+          AdaptivePopupMenuItem<Object>(
+            label: label,
+            value: noise ?? 'any',
+            selected: noise == _noise,
+          ),
+      ],
+      onSelected: (_, entry) => setState(() {
+        switch (entry.value) {
+          case final _Sort sort:
+            _sort = sort;
+          case final Noise noise:
+            _noise = noise;
+          default:
+            _noise = null;
+        }
+      }),
+    );
+  }
+
   bool _matches(Area area) => _noise == null || area.noise == _noise;
 
   @override
@@ -84,64 +123,34 @@ class _FloorsScreenState extends State<FloorsScreen> {
           120,
         ),
         children: [
-          Text(
-            'Floors',
-            style: theme.textTheme.headlineLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Floors',
+                  style: theme.textTheme.headlineLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              _filterMenu(),
+            ],
           ),
           const SizedBox(height: 2),
           UpdatedLabel(updatedAt: widget.status.updatedAt),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              SegmentedButton<_Grouping>(
-                showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(value: _Grouping.floors, label: Text('Floors')),
-                  ButtonSegment(value: _Grouping.areas, label: Text('Areas')),
-                ],
-                selected: {_grouping},
-                onSelectionChanged: (s) => setState(() => _grouping = s.first),
-              ),
-              const Spacer(),
-              PopupMenuButton<_Sort>(
-                tooltip: 'Sort',
-                initialValue: _sort,
-                onSelected: (s) => setState(() => _sort = s),
-                itemBuilder: (_) => [
-                  for (final s in _Sort.values)
-                    PopupMenuItem(value: s, child: Text(s.label)),
-                ],
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.sort, size: 20),
-                      const SizedBox(width: 6),
-                      Text(_sort.label, style: theme.textTheme.labelLarge),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+          AdaptiveSegmentedControl(
+            labels: const ['Floors', 'Areas'],
+            selectedIndex: _grouping.index,
+            onValueChanged: (i) =>
+                setState(() => _grouping = _Grouping.values[i]),
           ),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            children: [
-              for (final (noise, label) in [
-                (null, 'Any noise'),
-                (Noise.quiet, 'Quiet'),
-                (Noise.talkative, 'Talkative'),
-              ])
-                ChoiceChip(
-                  label: Text(label),
-                  selected: _noise == noise,
-                  onSelected: (_) => setState(() => _noise = noise),
-                ),
-            ],
+          Text(
+            '${_sort.label} · ${_noise?.label ?? 'Any noise'}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 12),
           ...items,

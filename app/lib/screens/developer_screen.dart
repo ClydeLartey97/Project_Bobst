@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 
 import '../models/bobst.dart';
@@ -32,8 +33,6 @@ class _DeveloperScreenState extends State<DeveloperScreen> {
   DevSettings? _settings;
   Object? _error;
   Timer? _debounce;
-
-  static const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   @override
   void initState() {
@@ -107,8 +106,8 @@ class _DeveloperScreenState extends State<DeveloperScreen> {
         _Section(
           title: 'Time of day',
           children: [
-            SwitchListTile(
-              title: const Text('Use real time'),
+            _SwitchRow(
+              label: 'Use real time',
               value: settings.hour == null,
               onChanged: (real) =>
                   _update(settings.copyWith(hour: () => real ? null : 15)),
@@ -128,24 +127,12 @@ class _DeveloperScreenState extends State<DeveloperScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              child: Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  ChoiceChip(
-                    label: const Text('Today'),
-                    selected: settings.weekday == null,
-                    onSelected: (_) =>
-                        _update(settings.copyWith(weekday: () => null)),
-                  ),
-                  for (var i = 0; i < 7; i++)
-                    ChoiceChip(
-                      label: Text(_days[i]),
-                      selected: settings.weekday == i,
-                      onSelected: (_) =>
-                          _update(settings.copyWith(weekday: () => i)),
-                    ),
-                ],
+              child: AdaptiveSegmentedControl(
+                labels: const ['Today', 'M', 'T', 'W', 'T', 'F', 'S', 'S'],
+                selectedIndex: (settings.weekday ?? -1) + 1,
+                onValueChanged: (i) => _update(
+                  settings.copyWith(weekday: () => i == 0 ? null : i - 1),
+                ),
               ),
             ),
           ],
@@ -155,15 +142,16 @@ class _DeveloperScreenState extends State<DeveloperScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              child: SegmentedButton<bool?>(
-                segments: const [
-                  ButtonSegment(value: null, label: Text('Calendar')),
-                  ButtonSegment(value: true, label: Text('On')),
-                  ButtonSegment(value: false, label: Text('Off')),
-                ],
-                selected: {settings.finals},
-                onSelectionChanged: (s) =>
-                    _update(settings.copyWith(finals: () => s.first)),
+              child: AdaptiveSegmentedControl(
+                labels: const ['Calendar', 'On', 'Off'],
+                selectedIndex: switch (settings.finals) {
+                  null => 0,
+                  true => 1,
+                  false => 2,
+                },
+                onValueChanged: (i) => _update(
+                  settings.copyWith(finals: () => [null, true, false][i]),
+                ),
               ),
             ),
           ],
@@ -319,7 +307,7 @@ class _LabeledSlider extends StatelessWidget {
             child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
           ),
           Expanded(
-            child: Slider(
+            child: AdaptiveSlider(
               value: value.clamp(0, max),
               max: max,
               divisions: divisions,
@@ -348,28 +336,67 @@ class _FloorOverride extends StatelessWidget {
     final forced = this.forced;
     return Column(
       children: [
-        SwitchListTile(
-          dense: true,
-          title: Text(floor.name),
-          subtitle: Text(
-            forced == null
-                ? 'Live · ${floor.occupancy} people'
-                : 'Forced to ${(forced * 100).round()}%',
-          ),
+        _SwitchRow(
+          label: floor.name,
+          detail: forced == null
+              ? 'Live · ${floor.occupancy} people'
+              : 'Forced to ${(forced * 100).round()}%',
           value: forced != null,
           onChanged: (on) => onChanged(on ? floor.fullness : null),
         ),
         if (forced != null)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Slider(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: AdaptiveSlider(
               value: forced,
               divisions: 20,
-              label: '${(forced * 100).round()}%',
               onChanged: onChanged,
             ),
           ),
       ],
+    );
+  }
+}
+
+/// Label (and optional detail) with a native switch on the right.
+class _SwitchRow extends StatelessWidget {
+  const _SwitchRow({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+    this.detail,
+  });
+
+  final String label;
+  final String? detail;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: theme.textTheme.bodyLarge),
+                if (detail != null)
+                  Text(
+                    detail!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          AdaptiveSwitch(value: value, onChanged: onChanged),
+        ],
+      ),
     );
   }
 }

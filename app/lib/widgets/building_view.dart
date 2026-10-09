@@ -210,7 +210,7 @@ class BuildingViewState extends State<BuildingView>
                   floors: {for (final f in widget.floors) f.id: f},
                   depth: _depth,
                   yaw: _yaw,
-                  pitch: (_tilt + _autoTilt * _depth).clamp(-0.2, 1.25),
+                  pitch: (_tilt + _autoTilt * _depth).clamp(0.0, 1.25),
                   zoom: _zoom,
                   // Keep drawing the floor that's sliding back in.
                   selectedFloor:
@@ -282,7 +282,7 @@ const _levels = [
   _Level('LL2', 'LL2'),
   _Level('LL1', 'LL1'),
   _Level('1', '1'),
-  _Level('M', 'M', height: 0.3),
+  _Level('M', 'M', height: 0.26),
   _Level('2', '2'),
   _Level('3', '3'),
   _Level('4', '4'),
@@ -296,13 +296,15 @@ const _levels = [
   _Level('12', '12'),
 ];
 
-const _gap = 0.22;
-const _width = 4.0; // footprint: a 4x4 grid of blocks around a 2x2 atrium
-const _slideDistance = 2.4;
-const _liftAbove = 0.6;
+const _outer = 2.6; // half-width of the square footprint
+const _inner = 1.05; // half-width of the central atrium
+const _gap = 0.1; // open space between floors
+const _plate = 0.07; // white floor plate at the bottom of each level
+const _slideDistance = 2.6;
+const _liftAbove = 0.55;
 
 class _Level {
-  const _Level(this.id, this.label, {this.height = 0.6});
+  const _Level(this.id, this.label, {this.height = 0.5});
 
   final String id;
   final String label;
@@ -315,18 +317,7 @@ class _V {
   final double x, y, z;
 
   _V operator +(_V o) => _V(x + o.x, y + o.y, z + o.z);
-}
-
-/// One block of a floor: a cell of the ring around the atrium.
-class _Cell {
-  _Cell(this.min, this.max, this.floor, this.area);
-
-  final _V min, max;
-  final Floor? floor;
-  final Area? area;
-
-  _V get center =>
-      _V((min.x + max.x) / 2, (min.y + max.y) / 2, (min.z + max.z) / 2);
+  double dot(_V o) => x * o.x + y * o.y + z * o.z;
 }
 
 class _Hit {
@@ -335,6 +326,91 @@ class _Hit {
   final Path path;
   final Floor? floor;
   final Area? area;
+}
+
+/// A flat polygon on one floor: part of a wall, or a band of the floor's top.
+class _Face {
+  _Face(this.corners, this.normal, this.area, {this.isTop = false});
+
+  final List<_V> corners;
+  final _V normal;
+  final Area? area;
+  final bool isTop;
+}
+
+/// Floor plan around the atrium: four bands, one per side.
+///   north: full width at the back   south: full width at the front
+///   west / east: between them, beside the atrium
+typedef _Rect = (double x0, double z0, double x1, double z1);
+
+const Map<Side, _Rect> _bands = {
+  Side.north: (-_outer, -_outer, _outer, -_inner),
+  Side.south: (-_outer, _inner, _outer, _outer),
+  Side.west: (-_outer, -_inner, -_inner, _inner),
+  Side.east: (_inner, -_inner, _outer, _inner),
+};
+
+/// One floor's walls and top, split by area. Walls are cut where the band
+/// behind them changes, then neighbouring pieces with the same area are merged
+/// so each area reads as one clean shape.
+List<_Face> _floorFaces(double y0, double y1, Map<Side, Area> bySide) {
+  final faces = <_Face>[];
+
+  // Outer walls, walking along each wall: (from, to, side whose band it is).
+  void wall(
+    _V normal,
+    _V Function(double t, double y) at,
+    List<(double, double, Side)> pieces,
+  ) {
+    final merged = <(double, double, Area?)>[];
+    for (final (t0, t1, side) in pieces) {
+      final area = bySide[side];
+      if (merged.isNotEmpty && merged.last.$3?.id == area?.id && area != null) {
+        merged[merged.length - 1] = (merged.last.$1, t1, area);
+      } else {
+        merged.add((t0, t1, area));
+      }
+    }
+    for (final (t0, t1, area) in merged) {
+      faces.add(
+        _Face([at(t0, y1), at(t1, y1), at(t1, y0), at(t0, y0)], normal, area),
+      );
+    }
+  }
+
+  const o = _outer, i = _inner;
+  // South (front) and north (back) outer walls belong entirely to their band.
+  wall(const _V(0, 0, 1), (t, y) => _V(t, y, o), [(-o, o, Side.south)]);
+  wall(const _V(0, 0, -1), (t, y) => _V(t, y, -o), [(-o, o, Side.north)]);
+  // East and west outer walls cross three bands.
+  for (final (x, n, side) in [
+    (o, const _V(1, 0, 0), Side.east),
+    (-o, const _V(-1, 0, 0), Side.west),
+  ]) {
+    wall(n, (t, y) => _V(x, y, t), [
+      (-o, -i, Side.north),
+      (-i, i, side),
+      (i, o, Side.south),
+    ]);
+  }
+  // Atrium walls face inwards.
+  wall(const _V(0, 0, 1), (t, y) => _V(t, y, -i), [(-i, i, Side.north)]);
+  wall(const _V(0, 0, -1), (t, y) => _V(t, y, i), [(-i, i, Side.south)]);
+  wall(const _V(1, 0, 0), (t, y) => _V(-i, y, t), [(-i, i, Side.west)]);
+  wall(const _V(-1, 0, 0), (t, y) => _V(i, y, t), [(-i, i, Side.east)]);
+
+  // Top bands (merged later by colour when drawn).
+  for (final MapEntry(key: side, value: (x0, z0, x1, z1)) in _bands.entries) {
+    faces.add(
+      _Face(
+        [_V(x0, y1, z0), _V(x1, y1, z0), _V(x1, y1, z1), _V(x0, y1, z1)],
+        const _V(0, 1, 0),
+        bySide[side],
+        isTop: true,
+      ),
+    );
+  }
+  return faces;
 }
 
 class _BuildingPainter extends CustomPainter {
@@ -363,8 +439,12 @@ class _BuildingPainter extends CustomPainter {
   final TextStyle labelStyle, countStyle;
   final Color untrackedColor, shadowColor, backgroundColor;
 
-  late double _cosY, _sinY, _cosP, _sinP, _height, _focal, _camDist;
+  late double _cosY, _sinY, _cosP, _sinP, _height, _camDist;
+  late double _focalX, _focalY;
   late Offset _center;
+
+  static const _plateColor = Color(0xFFF7F5F2);
+  static const _glassColor = Color(0xFFDCE3EA); // untracked floors
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -375,82 +455,62 @@ class _BuildingPainter extends CustomPainter {
     _sinP = math.sin(pitch);
 
     final selectedIndex = _levels.indexWhere((l) => l.id == selectedFloor);
-    final cells = <_Cell>[];
-    final levelY = <String, double>{};
+    final levelY = <double>[];
     var y = 0.0;
-    for (var i = 0; i < _levels.length; i++) {
-      final level = _levels[i];
-      levelY[level.id] = y;
-      cells.addAll(_cellsFor(level, y + _liftFor(i, selectedIndex)));
+    for (final level in _levels) {
+      levelY.add(y);
       y += level.height + _gap;
     }
     _height = y - _gap;
 
-    // Fit: flat view leaves room for labels; 3D fits a bounding sphere.
+    // Fit: flat view leaves room for floor labels; 3D fits a bounding sphere.
     final radius = math.sqrt(
-      math.pow(_height / 2, 2) + 2 * math.pow(_width / 2, 2),
+      math.pow(_height / 2, 2) + 2 * math.pow(_outer, 2),
     );
-    final flatScale = math.min(
-      (size.width - 2 * 96) / _width,
-      size.height * 0.92 / _height,
-    );
-    final roundScale = math.min(size.width, size.height) * 0.47 / radius;
-    final scale = _lerp(flatScale, roundScale, depth) * zoom;
+    // The flat view is a diagram, so it stretches to fill the space (labels
+    // either side); it eases back to true proportions as it turns 3D.
+    final flatX = (size.width - 2 * 92) / (2 * _outer);
+    final flatY = size.height * 0.9 / _height;
+    final roundScale = math.min(size.width, size.height) * 0.48 / radius;
     // Perspective eases in with 3D; at depth 0 the camera is effectively at
     // infinity, so the flat view has no distortion.
-    _camDist = _lerp(4000, radius * 3.2, depth);
-    _focal = scale * _camDist;
+    _camDist = _lerp(4000, radius * 3.4, depth);
+    _focalX = _lerp(flatX, roundScale, depth) * zoom * _camDist;
+    _focalY = _lerp(flatY, roundScale, depth) * zoom * _camDist;
     _center = Offset(size.width / 2, size.height / 2);
 
-    if (depth > 0) _paintShadow(canvas);
+    if (depth > 0) _paintBase(canvas);
 
-    // Painter's algorithm: farthest blocks first.
-    cells.sort((a, b) => _distance(b.center).compareTo(_distance(a.center)));
-    for (final cell in cells) {
-      _paintCell(canvas, cell);
+    // Draw whole floors far-to-near; within a floor, inner walls, then
+    // the top, then outer walls, which is always the correct overlap order.
+    final order = List.generate(_levels.length, (i) => i);
+    final offsets = [
+      for (var i = 0; i < _levels.length; i++) _offsetFor(i, selectedIndex),
+    ];
+    double distanceOf(int i) {
+      final mid = levelY[i] + _levels[i].height / 2;
+      return _distance(_V(0, mid, 0) + offsets[i]);
     }
 
-    if (depth < 0.5) _paintLabels(canvas, levelY, 1 - depth * 2, selectedIndex);
+    order.sort((a, b) => distanceOf(b).compareTo(distanceOf(a)));
+    for (final i in order) {
+      _paintFloor(canvas, _levels[i], levelY[i], offsets[i]);
+    }
+
+    if (depth < 0.5) {
+      _paintLabels(canvas, levelY, offsets, 1 - depth * 2);
+    }
   }
 
-  /// Floors above the selected one lift to open a gap.
-  double _liftFor(int index, int selectedIndex) =>
-      selectedIndex >= 0 && index > selectedIndex ? _liftAbove * slide : 0;
-
-  List<_Cell> _cellsFor(_Level level, double y0) {
-    final floor = floors[level.id];
-    final bySide = <Side, Area>{
-      for (final area in floor?.areas ?? const <Area>[])
-        for (final side in area.sides) side: area,
-    };
-    // The selected floor slides towards the camera (only in 3D).
-    final out = level.id == selectedFloor
-        ? _slideDistance * slide * depth
-        : 0.0;
-    final offset = _V(-_sinY * out, 0, _cosY * out);
-
-    final cells = <_Cell>[];
-    for (var gz = 0; gz < 4; gz++) {
-      for (var gx = 0; gx < 4; gx++) {
-        if (gx > 0 && gx < 3 && gz > 0 && gz < 3) continue; // atrium
-        final side = gz == 0
-            ? Side.north
-            : gz == 3
-            ? Side.south
-            : gx == 0
-            ? Side.west
-            : Side.east;
-        cells.add(
-          _Cell(
-            _V(gx - 2.0, y0, gz - 2.0) + offset,
-            _V(gx - 1.0, y0 + level.height, gz - 1.0) + offset,
-            floor,
-            bySide[side],
-          ),
-        );
-      }
+  /// Selected floor slides towards the camera; floors above it lift.
+  _V _offsetFor(int index, int selectedIndex) {
+    if (selectedIndex < 0) return const _V(0, 0, 0);
+    if (index > selectedIndex) return _V(0, _liftAbove * slide, 0);
+    if (index == selectedIndex) {
+      final out = _slideDistance * slide * depth;
+      return _V(-_sinY * out, 0, _cosY * out);
     }
-    return cells;
+    return const _V(0, 0, 0);
   }
 
   // Camera maths ------------------------------------------------------------
@@ -471,8 +531,11 @@ class _BuildingPainter extends CustomPainter {
 
   Offset _project(_V p) {
     final v = _view(p);
-    final s = _focal / (_camDist - v.z);
-    return Offset(_center.dx + v.x * s, _center.dy - v.y * s);
+    final w = _camDist - v.z;
+    return Offset(
+      _center.dx + v.x * _focalX / w,
+      _center.dy - v.y * _focalY / w,
+    );
   }
 
   double _distance(_V p) {
@@ -480,168 +543,245 @@ class _BuildingPainter extends CustomPainter {
     return math.sqrt(v.x * v.x + v.y * v.y + math.pow(_camDist - v.z, 2));
   }
 
-  // Drawing -----------------------------------------------------------------
-
-  void _paintShadow(Canvas canvas) {
-    const r = _width / 2 + 0.5;
-    final ground = [
-      _project(const _V(-r, -0.15, -r)),
-      _project(const _V(r, -0.15, -r)),
-      _project(const _V(r, -0.15, r)),
-      _project(const _V(-r, -0.15, r)),
-    ];
-    canvas.drawPath(
-      Path()..addPolygon(ground, true),
-      Paint()
-        ..color = shadowColor.withValues(alpha: 0.18 * depth)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18),
-    );
+  bool _facesCamera(_Face f, _V offset) {
+    var cx = 0.0, cy = 0.0, cz = 0.0;
+    for (final c in f.corners) {
+      cx += c.x;
+      cy += c.y;
+      cz += c.z;
+    }
+    final n = f.corners.length;
+    final centre = _view(_V(cx / n, cy / n, cz / n) + offset);
+    final toCam = _V(-centre.x, -centre.y, _camDist - centre.z);
+    return _viewDir(f.normal).dot(toCam) > 1e-6;
   }
 
-  Color _colorOf(_Cell cell) {
-    final floor = cell.floor;
-    if (floor == null) return untrackedColor;
+  // Drawing -----------------------------------------------------------------
+
+  void _paintBase(Canvas canvas) {
+    Path quad(double r, double y) => Path()
+      ..addPolygon([
+        _project(_V(-r, y, -r)),
+        _project(_V(r, y, -r)),
+        _project(_V(r, y, r)),
+        _project(_V(-r, y, r)),
+      ], true);
+
+    // Soft contact shadow, then a crisp plinth for the model to stand on.
+    canvas.drawPath(
+      quad(_outer + 0.9, -0.12),
+      Paint()
+        ..color = shadowColor.withValues(alpha: 0.16 * depth)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 22),
+    );
+    final plinth = quad(_outer + 0.45, -0.06);
+    canvas
+      ..drawPath(
+        plinth,
+        Paint()..color = _plateColor.withValues(alpha: 0.9 * depth),
+      )
+      ..drawPath(
+        plinth,
+        Paint()
+          ..color = shadowColor.withValues(alpha: 0.12 * depth)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1,
+      );
+  }
+
+  /// Fill colour of an area (or the floor average in the flat view).
+  Color _baseColor(Floor? floor, Area? area) {
+    if (floor == null) return _glassColor;
     final floorColor = colorFor(floor.busyness);
-    final area = cell.area;
     final areaColor = area != null
         ? colorFor(area.busyness)
-        : Color.lerp(floorColor, untrackedColor, 0.75)!;
+        : Color.lerp(floorColor, _glassColor, 0.7)!;
     var color = Color.lerp(floorColor, areaColor, depth)!;
-    if (selectedArea != null && floor.id == selectedFloor) {
-      // Spotlight the tapped area within the open floor.
-      if (area?.id != selectedArea) {
-        color = Color.lerp(color, untrackedColor, 0.5)!;
-      }
+    if (selectedArea != null &&
+        floor.id == selectedFloor &&
+        area?.id != selectedArea) {
+      color = Color.lerp(color, _glassColor, 0.6)!; // spotlight the tapped area
+    }
+    if (selectedFloor != null && floor.id != selectedFloor) {
+      color = Color.lerp(color, backgroundColor, 0.75 * slide)!;
     }
     return color;
   }
 
-  /// How far to fade a block into the background: everything except the
-  /// selected floor fades. Kept opaque so blocks don't show through.
-  double _fadeOf(_Cell cell) {
-    if (selectedFloor == null || cell.floor?.id == selectedFloor) return 0;
-    return 0.72 * slide;
+  /// Simple lighting from the camera's upper left, so any angle reads well.
+  double _light(_V normal) {
+    final n = _viewDir(normal);
+    final diffuse = math.max(0.0, n.dot(const _V(-0.42, 0.72, 0.55)));
+    return _lerp(1, math.min(1.0, 0.74 + 0.3 * diffuse), depth);
   }
 
-  void _paintCell(Canvas canvas, _Cell c) {
-    final base = Color.lerp(_colorOf(c), backgroundColor, _fadeOf(c))!;
-    final a = c.min, b = c.max;
-    final faces = <(_V, List<_V>)>[
-      // (outward normal, corners going round the face)
-      (
-        const _V(0, 1, 0),
-        [
-          _V(a.x, b.y, a.z),
-          _V(b.x, b.y, a.z),
-          _V(b.x, b.y, b.z),
-          _V(a.x, b.y, b.z),
-        ],
-      ),
-      (
-        const _V(0, -1, 0),
-        [
-          _V(a.x, a.y, a.z),
-          _V(b.x, a.y, a.z),
-          _V(b.x, a.y, b.z),
-          _V(a.x, a.y, b.z),
-        ],
-      ),
-      (
-        const _V(0, 0, 1),
-        [
-          _V(a.x, b.y, b.z),
-          _V(b.x, b.y, b.z),
-          _V(b.x, a.y, b.z),
-          _V(a.x, a.y, b.z),
-        ],
-      ),
-      (
-        const _V(0, 0, -1),
-        [
-          _V(a.x, b.y, a.z),
-          _V(b.x, b.y, a.z),
-          _V(b.x, a.y, a.z),
-          _V(a.x, a.y, a.z),
-        ],
-      ),
-      (
-        const _V(1, 0, 0),
-        [
-          _V(b.x, b.y, a.z),
-          _V(b.x, b.y, b.z),
-          _V(b.x, a.y, b.z),
-          _V(b.x, a.y, a.z),
-        ],
-      ),
-      (
-        const _V(-1, 0, 0),
-        [
-          _V(a.x, b.y, a.z),
-          _V(a.x, b.y, b.z),
-          _V(a.x, a.y, b.z),
-          _V(a.x, a.y, a.z),
-        ],
-      ),
-    ];
+  void _paintFloor(Canvas canvas, _Level level, double y0, _V offset) {
+    final floor = floors[level.id];
+    final faded = selectedFloor != null && floor?.id != selectedFloor;
+    final bySide = <Side, Area>{
+      for (final area in floor?.areas ?? const <Area>[])
+        for (final side in area.sides) side: area,
+    };
+    final y1 = y0 + level.height;
+    final faces = _floorFaces(
+      y0,
+      y1,
+      bySide,
+    ).where((f) => _facesCamera(f, offset)).toList();
 
-    for (final (n, corners) in faces) {
-      // Back-face cull against the actual camera position (perspective).
-      final nv = _viewDir(n);
-      final fc = _view(
-        _V(
-          (corners[0].x + corners[2].x) / 2,
-          (corners[0].y + corners[2].y) / 2,
-          (corners[0].z + corners[2].z) / 2,
-        ),
-      );
-      final toCam = _V(-fc.x, -fc.y, _camDist - fc.z);
-      if (nv.x * toCam.x + nv.y * toCam.y + nv.z * toCam.z <= 1e-6) continue;
-
-      // Light from upper left of the camera, so the view always reads well.
-      const lx = -0.42, ly = 0.72, lz = 0.55;
-      final diffuse = math.max(0.0, nv.x * lx + nv.y * ly + nv.z * lz);
-      final shade = _lerp(1, 0.58 + 0.42 * diffuse, depth);
-      final color = Color.lerp(Colors.black, base, shade)!;
-
-      final points = corners.map(_project).toList();
-      final path = Path()..addPolygon(points, true);
-
-      // Glassy sheen: side faces get lighter towards their top edge.
-      final isSide = n.y == 0;
-      final paint = Paint()..color = color;
-      if (isSide && depth > 0) {
-        final top = Offset.lerp(points[0], points[1], 0.5)!;
-        final bottom = Offset.lerp(points[2], points[3], 0.5)!;
-        paint.shader = ui.Gradient.linear(top, bottom, [
-          Color.lerp(color, Colors.white, 0.22 * depth)!,
-          color,
-        ]);
+    final atrium = <_Face>[], tops = <_Face>[], outer = <_Face>[];
+    for (final f in faces) {
+      if (f.isTop) {
+        tops.add(f);
+      } else if (_isAtriumWall(f)) {
+        atrium.add(f);
+      } else {
+        outer.add(f);
       }
-      canvas.drawPath(path, paint);
-      // Hairline in the same paint (gradient included) hides seams between
-      // neighbouring blocks.
+    }
+
+    // Flat view shows only the front; skip edge-on slivers of everything else.
+    if (depth > 0.02) {
+      for (final f in atrium) {
+        _paintWall(canvas, f, floor, offset, y0, inside: true, faded: faded);
+      }
+      _paintTop(canvas, tops, floor, offset, faded);
+    }
+    for (final f in outer) {
+      _paintWall(canvas, f, floor, offset, y0, faded: faded);
+    }
+  }
+
+  /// Atrium walls are the only walls entirely within the atrium's square.
+  bool _isAtriumWall(_Face f) => f.corners.every(
+    (c) => c.x.abs() <= _inner + 1e-9 && c.z.abs() <= _inner + 1e-9,
+  );
+
+  List<Offset> _projectAll(List<_V> corners, _V offset) => [
+    for (final c in corners) _project(c + offset),
+  ];
+
+  void _paintWall(
+    Canvas canvas,
+    _Face f,
+    Floor? floor,
+    _V offset,
+    double y0, {
+    bool inside = false,
+    required bool faded,
+  }) {
+    var color = Color.lerp(
+      Colors.black,
+      _baseColor(floor, f.area),
+      _light(f.normal) * (inside ? 0.85 : 1),
+    )!;
+    final pts = _projectAll(f.corners, offset);
+    final path = Path()..addPolygon(pts, true);
+
+    // Glass sheen: lighter towards the top edge of the wall.
+    final top = Offset.lerp(pts[0], pts[1], 0.5)!;
+    final bottom = Offset.lerp(pts[2], pts[3], 0.5)!;
+    canvas.drawPath(
+      path,
+      Paint()
+        ..shader = ui.Gradient.linear(top, bottom, [
+          Color.lerp(color, Colors.white, 0.28 * depth + 0.04)!,
+          color,
+        ]),
+    );
+
+    // White floor plate along the bottom of the wall.
+    final plateTop = _plate / (f.corners[0].y - y0);
+    final plate = Path()
+      ..addPolygon([
+        Offset.lerp(pts[3], pts[0], plateTop)!,
+        Offset.lerp(pts[2], pts[1], plateTop)!,
+        pts[2],
+        pts[3],
+      ], true);
+    var plateColor = Color.lerp(
+      Colors.black,
+      _plateColor,
+      _lerp(1, 0.75 + 0.25 * _light(f.normal), depth),
+    )!;
+    if (faded) {
+      plateColor = Color.lerp(plateColor, backgroundColor, 0.6 * slide)!;
+    }
+    canvas.drawPath(plate, Paint()..color = plateColor);
+
+    // Fine edge so areas and corners read crisply.
+    color = Color.lerp(color, Colors.black, 0.25)!;
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color.withValues(alpha: faded ? 0.15 : 0.35)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8,
+    );
+    hits.add(_Hit(path, floor, f.area));
+  }
+
+  void _paintTop(
+    Canvas canvas,
+    List<_Face> tops,
+    Floor? floor,
+    _V offset,
+    bool faded,
+  ) {
+    if (tops.isEmpty) return;
+    // Merge neighbouring bands of the same colour into one seamless shape.
+    final groups = <Color, (Path, Area?)>{};
+    for (final f in tops) {
+      final color = _baseColor(floor, f.area);
+      final band = Path()..addPolygon(_projectAll(f.corners, offset), true);
+      final existing = groups[color];
+      groups[color] = existing == null
+          ? (band, f.area)
+          : (Path.combine(PathOperation.union, existing.$1, band), existing.$2);
+    }
+    final shade = _light(const _V(0, 1, 0));
+    for (final MapEntry(key: color, value: (path, area)) in groups.entries) {
+      final top = Color.lerp(
+        Colors.black,
+        Color.lerp(color, Colors.white, 0.12)!,
+        math.min(1.0, shade + 0.12),
+      )!;
+      canvas.drawPath(path, Paint()..color = top);
+      hits.add(_Hit(path, floor, area));
+    }
+    // Crisp light rim around the floor's outer edge and the atrium opening.
+    final rim = Paint()
+      ..color = Colors.white.withValues(alpha: (faded ? 0.25 : 0.7) * depth)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1;
+    final y = tops.first.corners.first.y;
+    for (final r in [_outer, _inner]) {
       canvas.drawPath(
-        path,
-        paint
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 0.7,
+        Path()..addPolygon(
+          _projectAll([
+            _V(-r, y, -r),
+            _V(r, y, -r),
+            _V(r, y, r),
+            _V(-r, y, r),
+          ], offset),
+          true,
+        ),
+        rim,
       );
-      hits.add(_Hit(path, c.floor, c.area));
     }
   }
 
   void _paintLabels(
     Canvas canvas,
-    Map<String, double> levelY,
+    List<double> levelY,
+    List<_V> offsets,
     double opacity,
-    int selectedIndex,
   ) {
     for (var i = 0; i < _levels.length; i++) {
       final level = _levels[i];
-      final mid =
-          levelY[level.id]! + _liftFor(i, selectedIndex) + level.height / 2;
-      final left = _project(_V(-_width / 2, mid, _width / 2));
-      final right = _project(_V(_width / 2, mid, _width / 2));
+      final mid = levelY[i] + level.height / 2;
+      final left = _project(_V(-_outer, mid, _outer) + offsets[i]);
+      final right = _project(_V(_outer, mid, _outer) + offsets[i]);
       final floor = floors[level.id];
       final dim = selectedFloor != null && level.id != selectedFloor;
       final alpha = opacity * (floor == null || dim ? 0.4 : 1);
@@ -650,7 +790,7 @@ class _BuildingPainter extends CustomPainter {
         canvas,
         level.label,
         labelStyle.copyWith(color: labelStyle.color!.withValues(alpha: alpha)),
-        Offset(left.dx - 10, left.dy),
+        Offset(left.dx - 12, left.dy),
         alignRight: true,
       );
       if (floor != null) {
@@ -660,7 +800,7 @@ class _BuildingPainter extends CustomPainter {
           countStyle.copyWith(
             color: countStyle.color!.withValues(alpha: alpha),
           ),
-          Offset(right.dx + 10, right.dy),
+          Offset(right.dx + 12, right.dy),
         );
       }
     }
