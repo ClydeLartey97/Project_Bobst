@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
-from app.models import FloorsResponse
-from app.services import current_floors
+from app.models import BobstResponse
+from app.services import current_status
 
 router = APIRouter()
 
@@ -11,6 +11,6 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@router.get("/floors", response_model=FloorsResponse)
-def floors() -> FloorsResponse:
-    return current_floors()
+@router.get("/status", response_model=BobstResponse)
+def status() -> BobstResponse:
+    return current_status()

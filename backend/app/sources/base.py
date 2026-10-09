@@ -1,13 +1,16 @@
 from datetime import datetime
-from typing import Dict, Protocol
+from typing import Dict, Protocol, Tuple
+
+# (floor id, area id)
+AreaKey = Tuple[str, str]
 
 
 class OccupancySource(Protocol):
-    """Anything that can report how many devices are on each floor right now.
+    """Anything that can report how many people are in each area right now.
 
     The dummy source fakes this; a real source will aggregate client counts
-    from NYU's Wi-Fi access points, grouped by floor.
+    from NYU's Wi-Fi access points, each mapped to a floor and area.
     """
 
-    def occupancy_by_floor(self, now: datetime) -> Dict[str, int]:
+    def occupancy_by_area(self, now: datetime) -> Dict[AreaKey, int]:
         ...

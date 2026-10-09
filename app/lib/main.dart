@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
-import 'screens/home_shell.dart';
+import 'screens/home_screen.dart';
 import 'services/api_client.dart';
+import 'theme/busyness_colors.dart';
 
 void main() {
   runApp(BobstApp(api: ApiClient()));
@@ -15,17 +16,15 @@ class BobstApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Bobst Busyness',
-      theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF57068C), // NYU violet
-        useMaterial3: true,
-      ),
+      title: 'Bobst',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(colorSchemeSeed: nyuViolet, useMaterial3: true),
       darkTheme: ThemeData(
-        colorSchemeSeed: const Color(0xFF57068C),
+        colorSchemeSeed: nyuViolet,
         brightness: Brightness.dark,
         useMaterial3: true,
       ),
-      home: HomeShell(api: api),
+      home: HomeScreen(api: api),
     );
   }
 }

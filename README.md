@@ -7,10 +7,15 @@ backend/   FastAPI (Python). Turns Wi-Fi access-point counts into per-floor busy
 app/       Flutter app. One codebase for iOS, Android, macOS and Windows.
 ```
 
-The backend owns all the logic and serves JSON at `/api/floors`; the app just
+The backend owns all the logic and serves JSON at `/api/status`; the app just
 displays it. Occupancy currently comes from `DummySource`
 (`backend/app/sources/dummy.py`). The real NYU feed will be another
 `OccupancySource` implementation, swapped in at `backend/app/services.py`.
+
+Floors and their areas (e.g. "5th Floor East") live in `backend/app/floors.py`.
+Busyness uses one six-step scale everywhere (Empty → Quite empty → Not too
+busy → Busy → Very busy → Full); thresholds are `BUSYNESS_SCALE` in
+`services.py`.
 
 ## Backend
 
@@ -18,7 +23,7 @@ displays it. Occupancy currently comes from `DummySource`
 cd backend
 python3 -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/uvicorn app.main:app --reload    # http://localhost:8000/api/floors
+.venv/bin/uvicorn app.main:app --reload    # http://localhost:8000/api/status
 .venv/bin/python -m pytest
 ```
 
