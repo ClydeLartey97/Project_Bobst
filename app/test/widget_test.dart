@@ -19,6 +19,7 @@ Map<String, dynamic> area(
   'name': name,
   'label': '5th Floor $name',
   'noise': noise,
+  'sides': [name.toLowerCase()],
   'occupancy': people,
   'capacity': 70,
   'fullness': people / 70,
@@ -209,5 +210,40 @@ void main() {
     await pick('Quiet');
     expect(find.text('5th Floor West'), findsOneWidget);
     expect(find.text('5th Floor East'), findsNothing);
+  });
+
+  testWidgets('tapping a floor flies in to its plan and back', (tester) async {
+    await pumpApp(tester, fakeApi());
+    await tester.tap(find.text('Building').last);
+    await tester.pump();
+
+    tester.widget<BuildingView>(find.byType(BuildingView)).onTapFloor('5');
+    await tester.pumpAndSettle(const Duration(milliseconds: 50));
+
+    // Plan: each side labelled with its busyness, streets for orientation.
+    expect(find.text('5th Floor'), findsWidgets);
+    expect(find.text('EAST'), findsOneWidget);
+    expect(find.text('WEST'), findsOneWidget);
+    expect(find.text('Washington Square Park'), findsOneWidget);
+    expect(find.text('Open atrium'), findsOneWidget);
+    expect(find.text('No study space'), findsNWidgets(2)); // north + south
+
+    // Tapping a side highlights it; the areas list sits below.
+    await tester.tap(find.text('EAST'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 50));
+    await tester.scrollUntilVisible(
+      find.text('Areas'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('Areas'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Back to building'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 50));
+    expect(find.text('Washington Square Park'), findsNothing);
+    expect(
+      tester.state<BuildingViewState>(find.byType(BuildingView)).isOpen,
+      isFalse,
+    );
   });
 }

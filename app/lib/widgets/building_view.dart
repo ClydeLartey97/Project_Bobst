@@ -9,10 +9,12 @@ import '../theme/busyness_colors.dart';
 
 /// Bobst as a stack of floors you can spin, tilt and zoom.
 ///
-/// At rest it's a flat front-on view where each floor is one colour (its
-/// overall busyness). Touching it eases into a perspective 3D view and splits
-/// each floor into its areas around the atrium. Releasing near the front snaps
-/// back to flat. Tapping a floor slides it out so its areas are easy to read.
+/// - Flat (at rest): front-on, each floor one colour for its overall average.
+/// - 3D (drag): each side of each floor shows that side's own busyness, with
+///   floor numbers and compass points so you can read "the south side is busy".
+/// - Open a floor ([openFloorId]): the rest of the building flies away and the
+///   camera swings overhead until the floor sits exactly in [planRect], where
+///   the screen lays its floor plan over it.
 ///
 /// Drawn with plain canvas maths (no 3D engine), so it's light and identical
 /// on every platform.
@@ -20,13 +22,23 @@ class BuildingView extends StatefulWidget {
   const BuildingView({
     super.key,
     required this.floors,
-    required this.onSelectionChanged,
+    required this.planRect,
+    required this.onTapFloor,
+    this.openFloorId,
+    this.onOpened,
+    this.onClosed,
   });
 
   final List<Floor> floors;
 
-  /// Called with the selected floor id and, if an area was tapped, its id.
-  final void Function(String? floorId, String? areaId) onSelectionChanged;
+  /// Where an opened floor lands, seen from above, in this widget's
+  /// coordinates. Matches the floor plan the screen draws on top.
+  final Rect planRect;
+
+  final String? openFloorId;
+  final ValueChanged<String> onTapFloor;
+  final VoidCallback? onOpened;
+  final VoidCallback? onClosed;
 
   @override
   State<BuildingView> createState() => BuildingViewState();
@@ -53,25 +65,51 @@ class BuildingViewState extends State<BuildingView>
   double _spinVelocity = 0; // radians per second
   Duration? _lastSpinTick;
 
-  // Selected floor slides out of the stack.
-  late final AnimationController _slide = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 320),
-  );
-  String? _selectedFloor;
-  String? _selectedArea;
-  String? _slidFloor; // stays set while a deselected floor slides back in
+  // Opening a floor: everything else flies away, camera goes overhead.
+  late final AnimationController _focus =
+      AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 950),
+        )
+        ..addListener(() => setState(() {}))
+        ..addStatusListener(_onFocusStatus);
+  String? _focusFloor;
 
   double _zoomAtGestureStart = 1;
   final _hits = <_Hit>[];
 
   bool get isFlat => _depth == 0 && !_camera.isAnimating;
+  bool get isOpen => _focusFloor != null;
+
+  @override
+  void didUpdateWidget(BuildingView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final id = widget.openFloorId;
+    if (id == oldWidget.openFloorId) return;
+    if (id != null) {
+      _spin.stop();
+      _camera.stop();
+      _focusFloor = id;
+      _focus.forward(from: 0);
+    } else {
+      _focus.reverse();
+    }
+  }
+
+  void _onFocusStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      widget.onOpened?.call();
+    } else if (status == AnimationStatus.dismissed) {
+      setState(() => _focusFloor = null);
+      widget.onClosed?.call();
+    }
+  }
 
   @override
   void dispose() {
     _camera.dispose();
     _spin.dispose();
-    _slide.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -154,38 +192,12 @@ class BuildingViewState extends State<BuildingView>
   }
 
   void _onTapUp(TapUpDetails d) {
-    _Hit? hit;
-    for (final h in _hits.reversed) {
-      if (h.path.contains(d.localPosition)) {
-        hit = h;
-        break;
-      }
+    for (final hit in _hits.reversed) {
+      if (!hit.path.contains(d.localPosition)) continue;
+      final floor = hit.floor;
+      if (floor != null) widget.onTapFloor(floor.id); // untracked: ignore
+      return;
     }
-
-    final floor = hit?.floor;
-    if (floor == null) {
-      _select(null, null); // tapped empty space or an untracked floor
-    } else if (floor.id == _selectedFloor && _depth > 0.5) {
-      _select(floor.id, hit!.area?.id); // drill into an area of the open floor
-    } else {
-      _select(floor.id, null);
-    }
-  }
-
-  void _select(String? floorId, String? areaId) {
-    if (floorId != _selectedFloor) {
-      if (floorId == null) {
-        _slide.reverse();
-      } else {
-        _slidFloor = floorId;
-        _slide.forward(from: 0);
-      }
-    }
-    setState(() {
-      _selectedFloor = floorId;
-      _selectedArea = areaId;
-    });
-    widget.onSelectionChanged(floorId, areaId);
   }
 
   // Build -------------------------------------------------------------------
@@ -193,30 +205,32 @@ class BuildingViewState extends State<BuildingView>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final focus = Curves.easeInOutCubic.transform(_focus.value);
+    final basePitch = (_tilt + _autoTilt * _depth).clamp(0.0, 1.25);
+
     return Stack(
       children: [
         Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onScaleStart: _onScaleStart,
-            onScaleUpdate: _onScaleUpdate,
-            onScaleEnd: _onScaleEnd,
-            onTapUp: _onTapUp,
-            child: AnimatedBuilder(
-              animation: _slide,
-              builder: (context, _) => CustomPaint(
+          child: IgnorePointer(
+            ignoring: isOpen,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onScaleStart: _onScaleStart,
+              onScaleUpdate: _onScaleUpdate,
+              onScaleEnd: _onScaleEnd,
+              onTapUp: _onTapUp,
+              child: CustomPaint(
                 size: Size.infinite,
                 painter: _BuildingPainter(
                   floors: {for (final f in widget.floors) f.id: f},
-                  depth: _depth,
-                  yaw: _yaw,
-                  pitch: (_tilt + _autoTilt * _depth).clamp(0.0, 1.25),
+                  // Opening a floor always ends in 3D, north up, overhead.
+                  depth: _lerp(_depth, 1, focus),
+                  yaw: _lerp(_yaw, _nearestFront(_yaw), focus),
+                  pitch: _lerp(basePitch, math.pi / 2, focus),
                   zoom: _zoom,
-                  // Keep drawing the floor that's sliding back in.
-                  selectedFloor:
-                      _selectedFloor ?? (_slide.value > 0 ? _slidFloor : null),
-                  selectedArea: _selectedArea,
-                  slide: Curves.easeOutCubic.transform(_slide.value),
+                  focusFloor: _focusFloor,
+                  focus: focus,
+                  planRect: widget.planRect,
                   hits: _hits,
                   labelStyle: theme.textTheme.labelLarge!.copyWith(
                     color: theme.colorScheme.onSurface,
@@ -225,7 +239,6 @@ class BuildingViewState extends State<BuildingView>
                   countStyle: theme.textTheme.bodySmall!.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
-                  untrackedColor: theme.colorScheme.outlineVariant,
                   shadowColor: theme.colorScheme.shadow,
                   backgroundColor: theme.colorScheme.surface,
                 ),
@@ -237,10 +250,10 @@ class BuildingViewState extends State<BuildingView>
           top: 0,
           right: 0,
           child: AnimatedOpacity(
-            opacity: _depth > 0.05 ? 1 : 0,
+            opacity: _depth > 0.05 && !isOpen ? 1 : 0,
             duration: const Duration(milliseconds: 200),
             child: IgnorePointer(
-              ignoring: _depth <= 0.05,
+              ignoring: _depth <= 0.05 || isOpen,
               child: IconButton.filledTonal(
                 tooltip: 'Flat view',
                 onPressed: flatten,
@@ -296,12 +309,18 @@ const _levels = [
   _Level('12', '12'),
 ];
 
-const _outer = 2.6; // half-width of the square footprint
-const _inner = 1.05; // half-width of the central atrium
+/// Half-width of the square footprint. Shared with the floor plan so the
+/// overhead view and the plan line up.
+const buildingOuter = 2.6;
+
+/// Half-width of the central atrium.
+const buildingInner = 1.05;
+
+const _outer = buildingOuter;
+const _inner = buildingInner;
 const _gap = 0.1; // open space between floors
 const _plate = 0.07; // white floor plate at the bottom of each level
-const _slideDistance = 2.6;
-const _liftAbove = 0.55;
+const _flyAway = 9.0; // how far other floors travel when one is opened
 
 class _Level {
   const _Level(this.id, this.label, {this.height = 0.5});
@@ -321,11 +340,10 @@ class _V {
 }
 
 class _Hit {
-  _Hit(this.path, this.floor, this.area);
+  _Hit(this.path, this.floor);
 
   final Path path;
   final Floor? floor;
-  final Area? area;
 }
 
 /// A flat polygon on one floor: part of a wall, or a band of the floor's top.
@@ -356,7 +374,6 @@ const Map<Side, _Rect> _bands = {
 List<_Face> _floorFaces(double y0, double y1, Map<Side, Area> bySide) {
   final faces = <_Face>[];
 
-  // Outer walls, walking along each wall: (from, to, side whose band it is).
   void wall(
     _V normal,
     _V Function(double t, double y) at,
@@ -399,7 +416,6 @@ List<_Face> _floorFaces(double y0, double y1, Map<Side, Area> bySide) {
   wall(const _V(1, 0, 0), (t, y) => _V(-i, y, t), [(-i, i, Side.west)]);
   wall(const _V(-1, 0, 0), (t, y) => _V(i, y, t), [(-i, i, Side.east)]);
 
-  // Top bands (merged later by colour when drawn).
   for (final MapEntry(key: side, value: (x0, z0, x1, z1)) in _bands.entries) {
     faces.add(
       _Face(
@@ -420,24 +436,23 @@ class _BuildingPainter extends CustomPainter {
     required this.yaw,
     required this.pitch,
     required this.zoom,
-    required this.selectedFloor,
-    required this.selectedArea,
-    required this.slide,
+    required this.focusFloor,
+    required this.focus,
+    required this.planRect,
     required this.hits,
     required this.labelStyle,
     required this.countStyle,
-    required this.untrackedColor,
     required this.shadowColor,
     required this.backgroundColor,
   });
 
   final Map<String, Floor> floors;
-  final double depth, yaw, pitch, zoom, slide;
-  final String? selectedFloor;
-  final String? selectedArea;
+  final double depth, yaw, pitch, zoom, focus;
+  final String? focusFloor;
+  final Rect planRect;
   final List<_Hit> hits;
   final TextStyle labelStyle, countStyle;
-  final Color untrackedColor, shadowColor, backgroundColor;
+  final Color shadowColor, backgroundColor;
 
   late double _cosY, _sinY, _cosP, _sinP, _height, _camDist;
   late double _focalX, _focalY;
@@ -454,7 +469,6 @@ class _BuildingPainter extends CustomPainter {
     _cosP = math.cos(pitch);
     _sinP = math.sin(pitch);
 
-    final selectedIndex = _levels.indexWhere((l) => l.id == selectedFloor);
     final levelY = <double>[];
     var y = 0.0;
     for (final level in _levels) {
@@ -462,55 +476,72 @@ class _BuildingPainter extends CustomPainter {
       y += level.height + _gap;
     }
     _height = y - _gap;
+    final focusIndex = _levels.indexWhere((l) => l.id == focusFloor);
 
-    // Fit: flat view leaves room for floor labels; 3D fits a bounding sphere.
+    // Fit: flat view is a diagram that stretches to fill the space (labels
+    // either side) and eases to true proportions in 3D. Opening a floor lands
+    // it exactly on [planRect], seen straight down with no perspective.
     final radius = math.sqrt(
       math.pow(_height / 2, 2) + 2 * math.pow(_outer, 2),
     );
-    // The flat view is a diagram, so it stretches to fill the space (labels
-    // either side); it eases back to true proportions as it turns 3D.
     final flatX = (size.width - 2 * 92) / (2 * _outer);
     final flatY = size.height * 0.9 / _height;
-    final roundScale = math.min(size.width, size.height) * 0.48 / radius;
-    // Perspective eases in with 3D; at depth 0 the camera is effectively at
-    // infinity, so the flat view has no distortion.
-    _camDist = _lerp(4000, radius * 3.4, depth);
-    _focalX = _lerp(flatX, roundScale, depth) * zoom * _camDist;
-    _focalY = _lerp(flatY, roundScale, depth) * zoom * _camDist;
-    _center = Offset(size.width / 2, size.height / 2);
+    final round = math.min(size.width, size.height) * 0.46 / radius;
+    final planScale = planRect.width / (2 * _outer);
+    final scaleX = _lerp(_lerp(flatX, round, depth) * zoom, planScale, focus);
+    final scaleY = _lerp(_lerp(flatY, round, depth) * zoom, planScale, focus);
+    _camDist = _lerp(_lerp(4000, radius * 3.4, depth), 4000, focus);
+    _focalX = scaleX * _camDist;
+    _focalY = scaleY * _camDist;
+    _center = Offset.lerp(
+      Offset(size.width / 2, size.height / 2),
+      planRect.center,
+      focus,
+    )!;
 
-    if (depth > 0) _paintBase(canvas);
-
-    // Draw whole floors far-to-near; within a floor, inner walls, then
-    // the top, then outer walls, which is always the correct overlap order.
-    final order = List.generate(_levels.length, (i) => i);
     final offsets = [
-      for (var i = 0; i < _levels.length; i++) _offsetFor(i, selectedIndex),
+      for (var i = 0; i < _levels.length; i++)
+        _offsetFor(i, focusIndex, levelY[i] + _levels[i].height / 2),
     ];
-    double distanceOf(int i) {
-      final mid = levelY[i] + _levels[i].height / 2;
-      return _distance(_V(0, mid, 0) + offsets[i]);
+
+    if (depth > 0) {
+      _paintBase(canvas, 1 - _awayFade);
+      _paintCompass(
+        canvas,
+        (depth - 0.5).clamp(0.0, 0.5) * 2 * (1 - _awayFade),
+      );
     }
 
-    order.sort((a, b) => distanceOf(b).compareTo(distanceOf(a)));
+    // Whole floors far-to-near; within a floor inner walls, then top, then
+    // outer walls, which is always the right overlap order.
+    double distanceOf(int i) =>
+        _distance(_V(0, levelY[i] + _levels[i].height / 2, 0) + offsets[i]);
+    final order = List.generate(_levels.length, (i) => i)
+      ..sort((a, b) => distanceOf(b).compareTo(distanceOf(a)));
     for (final i in order) {
-      _paintFloor(canvas, _levels[i], levelY[i], offsets[i]);
+      if (i != focusIndex && _awayFade >= 1) continue; // flown away
+      _paintFloor(canvas, _levels[i], levelY[i], offsets[i], i == focusIndex);
     }
 
+    final chrome = 1 - math.min(1.0, focus / 0.25); // labels go first
     if (depth < 0.5) {
-      _paintLabels(canvas, levelY, offsets, 1 - depth * 2);
+      _paintFlatLabels(canvas, levelY, (1 - depth * 2) * chrome);
+    }
+    if (depth > 0.5) {
+      final alpha = (depth - 0.5) * 2 * chrome;
+      _paintFloorNumbers(canvas, levelY, alpha);
     }
   }
 
-  /// Selected floor slides towards the camera; floors above it lift.
-  _V _offsetFor(int index, int selectedIndex) {
-    if (selectedIndex < 0) return const _V(0, 0, 0);
-    if (index > selectedIndex) return _V(0, _liftAbove * slide, 0);
-    if (index == selectedIndex) {
-      final out = _slideDistance * slide * depth;
-      return _V(-_sinY * out, 0, _cosY * out);
-    }
-    return const _V(0, 0, 0);
+  /// Other floors fade out early in the flight so the chosen one flies alone.
+  double get _awayFade => math.min(1.0, focus / 0.45);
+
+  /// When a floor opens, it rises to the centre and the rest fly away.
+  _V _offsetFor(int index, int focusIndex, double mid) {
+    if (focusIndex < 0) return const _V(0, 0, 0);
+    if (index == focusIndex) return _V(0, (_height / 2 - mid) * focus, 0);
+    final away = index > focusIndex ? _flyAway : -_flyAway;
+    return _V(0, away * focus, 0);
   }
 
   // Camera maths ------------------------------------------------------------
@@ -558,7 +589,7 @@ class _BuildingPainter extends CustomPainter {
 
   // Drawing -----------------------------------------------------------------
 
-  void _paintBase(Canvas canvas) {
+  void _paintBase(Canvas canvas, double opacity) {
     Path quad(double r, double y) => Path()
       ..addPolygon([
         _project(_V(-r, y, -r)),
@@ -567,43 +598,40 @@ class _BuildingPainter extends CustomPainter {
         _project(_V(-r, y, r)),
       ], true);
 
-    // Soft contact shadow, then a crisp plinth for the model to stand on.
+    final a = depth * opacity;
     canvas.drawPath(
       quad(_outer + 0.9, -0.12),
       Paint()
-        ..color = shadowColor.withValues(alpha: 0.16 * depth)
+        ..color = shadowColor.withValues(alpha: 0.16 * a)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 22),
     );
     final plinth = quad(_outer + 0.45, -0.06);
     canvas
       ..drawPath(
         plinth,
-        Paint()..color = _plateColor.withValues(alpha: 0.9 * depth),
+        Paint()..color = _plateColor.withValues(alpha: 0.9 * a),
       )
       ..drawPath(
         plinth,
         Paint()
-          ..color = shadowColor.withValues(alpha: 0.12 * depth)
+          ..color = shadowColor.withValues(alpha: 0.12 * a)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1,
       );
   }
 
-  /// Fill colour of an area (or the floor average in the flat view).
-  Color _baseColor(Floor? floor, Area? area) {
-    if (floor == null) return _glassColor;
-    final floorColor = colorFor(floor.busyness);
-    final areaColor = area != null
-        ? colorFor(area.busyness)
-        : Color.lerp(floorColor, _glassColor, 0.7)!;
-    var color = Color.lerp(floorColor, areaColor, depth)!;
-    if (selectedArea != null &&
-        floor.id == selectedFloor &&
-        area?.id != selectedArea) {
-      color = Color.lerp(color, _glassColor, 0.6)!; // spotlight the tapped area
+  /// Flat view shows each floor's average; 3D shows each area's own colour.
+  Color _baseColor(Floor? floor, Area? area, bool focused) {
+    var color = _glassColor;
+    if (floor != null) {
+      final floorColor = colorFor(floor.busyness);
+      final areaColor = area != null
+          ? colorFor(area.busyness)
+          : Color.lerp(floorColor, _glassColor, 0.7)!;
+      color = Color.lerp(floorColor, areaColor, depth)!;
     }
-    if (selectedFloor != null && floor.id != selectedFloor) {
-      color = Color.lerp(color, backgroundColor, 0.75 * slide)!;
+    if (focusFloor != null && !focused) {
+      color = Color.lerp(color, backgroundColor, _awayFade)!; // fading away
     }
     return color;
   }
@@ -615,17 +643,21 @@ class _BuildingPainter extends CustomPainter {
     return _lerp(1, math.min(1.0, 0.74 + 0.3 * diffuse), depth);
   }
 
-  void _paintFloor(Canvas canvas, _Level level, double y0, _V offset) {
+  void _paintFloor(
+    Canvas canvas,
+    _Level level,
+    double y0,
+    _V offset,
+    bool focused,
+  ) {
     final floor = floors[level.id];
-    final faded = selectedFloor != null && floor?.id != selectedFloor;
     final bySide = <Side, Area>{
       for (final area in floor?.areas ?? const <Area>[])
         for (final side in area.sides) side: area,
     };
-    final y1 = y0 + level.height;
     final faces = _floorFaces(
       y0,
-      y1,
+      y0 + level.height,
       bySide,
     ).where((f) => _facesCamera(f, offset)).toList();
 
@@ -643,12 +675,12 @@ class _BuildingPainter extends CustomPainter {
     // Flat view shows only the front; skip edge-on slivers of everything else.
     if (depth > 0.02) {
       for (final f in atrium) {
-        _paintWall(canvas, f, floor, offset, y0, inside: true, faded: faded);
+        _paintWall(canvas, f, floor, offset, y0, focused, inside: true);
       }
-      _paintTop(canvas, tops, floor, offset, faded);
+      _paintTop(canvas, tops, floor, offset, focused);
     }
     for (final f in outer) {
-      _paintWall(canvas, f, floor, offset, y0, faded: faded);
+      _paintWall(canvas, f, floor, offset, y0, focused);
     }
   }
 
@@ -666,13 +698,14 @@ class _BuildingPainter extends CustomPainter {
     _Face f,
     Floor? floor,
     _V offset,
-    double y0, {
+    double y0,
+    bool focused, {
     bool inside = false,
-    required bool faded,
   }) {
+    final fading = focusFloor != null && !focused ? _awayFade : 0.0;
     var color = Color.lerp(
       Colors.black,
-      _baseColor(floor, f.area),
+      _baseColor(floor, f.area, focused),
       _light(f.normal) * (inside ? 0.85 : 1),
     )!;
     final pts = _projectAll(f.corners, offset);
@@ -699,14 +732,15 @@ class _BuildingPainter extends CustomPainter {
         pts[2],
         pts[3],
       ], true);
-    var plateColor = Color.lerp(
-      Colors.black,
-      _plateColor,
-      _lerp(1, 0.75 + 0.25 * _light(f.normal), depth),
+    final plateColor = Color.lerp(
+      Color.lerp(
+        Colors.black,
+        _plateColor,
+        _lerp(1, 0.75 + 0.25 * _light(f.normal), depth),
+      ),
+      backgroundColor,
+      fading,
     )!;
-    if (faded) {
-      plateColor = Color.lerp(plateColor, backgroundColor, 0.6 * slide)!;
-    }
     canvas.drawPath(plate, Paint()..color = plateColor);
 
     // Fine edge so areas and corners read crisply.
@@ -714,11 +748,11 @@ class _BuildingPainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()
-        ..color = color.withValues(alpha: faded ? 0.15 : 0.35)
+        ..color = color.withValues(alpha: 0.35 * (1 - fading))
         ..style = PaintingStyle.stroke
         ..strokeWidth = 0.8,
     );
-    hits.add(_Hit(path, floor, f.area));
+    hits.add(_Hit(path, floor));
   }
 
   void _paintTop(
@@ -726,32 +760,33 @@ class _BuildingPainter extends CustomPainter {
     List<_Face> tops,
     Floor? floor,
     _V offset,
-    bool faded,
+    bool focused,
   ) {
     if (tops.isEmpty) return;
     // Merge neighbouring bands of the same colour into one seamless shape.
-    final groups = <Color, (Path, Area?)>{};
+    final groups = <Color, Path>{};
     for (final f in tops) {
-      final color = _baseColor(floor, f.area);
+      final color = _baseColor(floor, f.area, focused);
       final band = Path()..addPolygon(_projectAll(f.corners, offset), true);
       final existing = groups[color];
       groups[color] = existing == null
-          ? (band, f.area)
-          : (Path.combine(PathOperation.union, existing.$1, band), existing.$2);
+          ? band
+          : Path.combine(PathOperation.union, existing, band);
     }
     final shade = _light(const _V(0, 1, 0));
-    for (final MapEntry(key: color, value: (path, area)) in groups.entries) {
+    for (final MapEntry(key: color, value: path) in groups.entries) {
       final top = Color.lerp(
         Colors.black,
         Color.lerp(color, Colors.white, 0.12)!,
         math.min(1.0, shade + 0.12),
       )!;
       canvas.drawPath(path, Paint()..color = top);
-      hits.add(_Hit(path, floor, area));
+      hits.add(_Hit(path, floor));
     }
     // Crisp light rim around the floor's outer edge and the atrium opening.
+    final fading = focusFloor != null && !focused ? _awayFade : 0.0;
     final rim = Paint()
-      ..color = Colors.white.withValues(alpha: (faded ? 0.25 : 0.7) * depth)
+      ..color = Colors.white.withValues(alpha: 0.7 * depth * (1 - fading))
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.1;
     final y = tops.first.corners.first.y;
@@ -771,20 +806,18 @@ class _BuildingPainter extends CustomPainter {
     }
   }
 
-  void _paintLabels(
-    Canvas canvas,
-    List<double> levelY,
-    List<_V> offsets,
-    double opacity,
-  ) {
+  // Labels ------------------------------------------------------------------
+
+  /// Flat view: floor number on the left, headcount on the right.
+  void _paintFlatLabels(Canvas canvas, List<double> levelY, double opacity) {
+    if (opacity <= 0) return;
     for (var i = 0; i < _levels.length; i++) {
       final level = _levels[i];
       final mid = levelY[i] + level.height / 2;
-      final left = _project(_V(-_outer, mid, _outer) + offsets[i]);
-      final right = _project(_V(_outer, mid, _outer) + offsets[i]);
+      final left = _project(_V(-_outer, mid, _outer));
+      final right = _project(_V(_outer, mid, _outer));
       final floor = floors[level.id];
-      final dim = selectedFloor != null && level.id != selectedFloor;
-      final alpha = opacity * (floor == null || dim ? 0.4 : 1);
+      final alpha = opacity * (floor == null ? 0.4 : 1);
 
       _text(
         canvas,
@@ -803,6 +836,63 @@ class _BuildingPainter extends CustomPainter {
           Offset(right.dx + 12, right.dy),
         );
       }
+    }
+  }
+
+  /// 3D: floor numbers beside whichever corner is furthest left on screen.
+  void _paintFloorNumbers(Canvas canvas, List<double> levelY, double opacity) {
+    if (opacity <= 0) return;
+    for (var i = 0; i < _levels.length; i++) {
+      final level = _levels[i];
+      final mid = levelY[i] + level.height / 2;
+      Offset? leftmost;
+      for (final (x, z) in [
+        (-_outer, -_outer),
+        (_outer, -_outer),
+        (_outer, _outer),
+        (-_outer, _outer),
+      ]) {
+        final p = _project(_V(x, mid, z));
+        if (leftmost == null || p.dx < leftmost.dx) leftmost = p;
+      }
+      final alpha = opacity * (floors[level.id] == null ? 0.35 : 0.9);
+      _text(
+        canvas,
+        level.label,
+        labelStyle.copyWith(
+          fontSize: 11,
+          color: labelStyle.color!.withValues(alpha: alpha),
+        ),
+        Offset(leftmost!.dx - 8, leftmost.dy),
+        alignRight: true,
+      );
+    }
+  }
+
+  /// 3D: N/E/S/W on the plinth so you can tell which side you're looking at.
+  void _paintCompass(Canvas canvas, double opacity) {
+    if (opacity <= 0) return;
+    const r = _outer + 0.95;
+    for (final (label, x, z) in [
+      ('N', 0.0, -r),
+      ('E', r, 0.0),
+      ('S', 0.0, r),
+      ('W', -r, 0.0),
+    ]) {
+      final p = _project(_V(x, -0.06, z));
+      final tp = TextPainter(
+        text: TextSpan(
+          text: label,
+          style: labelStyle.copyWith(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: (label == 'N' ? const Color(0xFFD0342C) : labelStyle.color!)
+                .withValues(alpha: opacity),
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, p - Offset(tp.width / 2, tp.height / 2));
     }
   }
 
