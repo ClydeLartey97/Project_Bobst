@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'screens/floors_screen.dart';
+import 'screens/home_shell.dart';
 import 'services/api_client.dart';
 
 void main() {
@@ -25,7 +25,7 @@ class BobstApp extends StatelessWidget {
         brightness: Brightness.dark,
         useMaterial3: true,
       ),
-      home: FloorsScreen(api: api),
+      home: HomeShell(api: api),
     );
   }
 }

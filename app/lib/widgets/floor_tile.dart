@@ -36,9 +36,13 @@ class FloorTile extends StatelessWidget {
                   child: Text(floor.name, style: theme.textTheme.titleMedium),
                 ),
                 Text(
-                  labelForLevel(floor.level),
-                  style: theme.textTheme.labelLarge?.copyWith(color: color),
+                  '${floor.occupancy}',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
+                const SizedBox(width: 4),
+                Text('people', style: theme.textTheme.bodySmall),
               ],
             ),
             const SizedBox(height: 8),
@@ -52,9 +56,18 @@ class FloorTile extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              '${(floor.busyness * 100).round()}% full',
-              style: theme.textTheme.bodySmall,
+            Row(
+              children: [
+                Text(
+                  '${(floor.busyness * 100).round()}% full',
+                  style: theme.textTheme.bodySmall,
+                ),
+                const Spacer(),
+                Text(
+                  labelForLevel(floor.level),
+                  style: theme.textTheme.labelLarge?.copyWith(color: color),
+                ),
+              ],
             ),
           ],
         ),

@@ -11,6 +11,18 @@ class BusynessLevel(str, Enum):
     busy = "busy"
 
 
+class BuildingStatus(str, Enum):
+    available = "available"
+    full = "full"
+
+
+class Building(BaseModel):
+    occupancy: int
+    capacity: int
+    busyness: float
+    status: BuildingStatus
+
+
 class Floor(BaseModel):
     id: str
     name: str
@@ -22,4 +34,5 @@ class Floor(BaseModel):
 
 class FloorsResponse(BaseModel):
     updated_at: datetime
+    building: Building
     floors: List[Floor]
