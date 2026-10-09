@@ -17,6 +17,21 @@ Busyness uses one six-step scale everywhere (Empty → Quite empty → Not too
 busy → Busy → Very busy → Full); thresholds are `BUSYNESS_SCALE` in
 `services.py`.
 
+### Study rooms
+
+`backend/app/rooms/` ingests live room availability from NYU's LibCal booking
+site (nyu.libcal.com), using the same public endpoints its booking page calls:
+room lists every 6 hours, availability every 5 minutes, with 10 seconds between
+requests (LibCal's robots.txt crawl delay). Served at `/api/rooms`; the app
+links each room to its LibCal page for booking (needs an NYU login). Turn off
+with `ROOMS_INGEST=false`.
+
+### Developer overrides
+
+`/api/dev/settings` lets the app's Developer tab override time of day, day,
+finals week, crowd size and per-floor fullness. Global to the server; disable
+with `DEV_MODE=false`.
+
 ## Backend
 
 ```sh

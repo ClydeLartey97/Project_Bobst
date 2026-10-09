@@ -123,20 +123,17 @@ class _SimulatedBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.25),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        'SIMULATED',
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.science_outlined, size: 16, color: Colors.white),
+        const SizedBox(width: 4),
+        Text(
+          'Simulated data',
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: Colors.white),
         ),
-      ),
+      ],
     );
   }
 }

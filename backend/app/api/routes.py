@@ -1,8 +1,13 @@
 from fastapi import APIRouter, HTTPException
 
+from datetime import datetime
+
 from app import dev
 from app.config import settings
 from app.models import BobstResponse
+from app.rooms import ingest
+from app.rooms.libcal import NYC
+from app.rooms.status import RoomsResponse, group_status
 from app.services import current_status
 
 router = APIRouter()
@@ -16,6 +21,16 @@ def health() -> dict:
 @router.get("/status", response_model=BobstResponse)
 def status() -> BobstResponse:
     return current_status(overrides=dev.settings)
+
+
+@router.get("/rooms", response_model=RoomsResponse)
+def rooms() -> RoomsResponse:
+    if ingest.ingester is None:
+        raise HTTPException(status_code=503, detail="Room ingestion is off")
+    now = datetime.now(NYC)
+    return RoomsResponse(
+        groups=[group_status(s, now) for s in ingest.ingester.snapshots.values()]
+    )
 
 
 def _require_dev_mode() -> None:

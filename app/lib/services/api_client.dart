@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/bobst.dart';
 import '../models/dev_settings.dart';
+import '../models/rooms.dart';
 
 /// Override at build/run time:
 ///   flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000  (Android emulator)
@@ -23,6 +24,13 @@ class ApiClient {
 
   Future<BobstStatus> fetchStatus() async =>
       BobstStatus.fromJson(await _send('GET', '/api/status'));
+
+  Future<List<RoomGroup>> fetchRooms() async {
+    final body = await _send('GET', '/api/rooms');
+    return (body['groups'] as List)
+        .map((g) => RoomGroup.fromJson(g as Map<String, dynamic>))
+        .toList();
+  }
 
   Future<DevSettings> fetchDevSettings() async =>
       DevSettings.fromJson(await _send('GET', '/api/dev/settings'));

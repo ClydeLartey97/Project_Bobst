@@ -9,6 +9,7 @@ import '../services/api_client.dart';
 import 'developer_screen.dart';
 import 'floors_screen.dart';
 import 'overview_screen.dart';
+import 'rooms_screen.dart';
 
 /// Owns the data and the tab bar; both tabs render the same status.
 ///
@@ -82,6 +83,13 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Floors',
           ),
           AdaptiveNavigationDestination(
+            icon: native
+                ? 'door.left.hand.closed'
+                : Icons.meeting_room_outlined,
+            selectedIcon: native ? 'door.left.hand.open' : Icons.meeting_room,
+            label: 'Rooms',
+          ),
+          AdaptiveNavigationDestination(
             icon: native ? 'hammer' : Icons.build_outlined,
             selectedIcon: native ? 'hammer.fill' : Icons.build,
             label: 'Developer',
@@ -115,6 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return switch (_tab) {
       0 => OverviewScreen(status: status, onRefresh: _load),
       1 => FloorsScreen(status: status, onRefresh: _load),
+      2 => RoomsScreen(api: widget.api),
       _ => DeveloperScreen(api: widget.api, status: status, onChanged: _load),
     };
   }

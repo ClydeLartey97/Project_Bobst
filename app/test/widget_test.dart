@@ -27,6 +27,9 @@ ApiClient fakeApi({String buildingLevel = 'very_busy'}) {
   final west = area('West', 'quiet', 12, 'quite_empty');
   return ApiClient(
     client: MockClient((request) async {
+      if (request.url.path == '/api/rooms') {
+        return http.Response(jsonEncode(roomsJson), 200);
+      }
       expect(request.url.path, '/api/status');
       return http.Response(
         jsonEncode({
@@ -57,6 +60,41 @@ ApiClient fakeApi({String buildingLevel = 'very_busy'}) {
   );
 }
 
+final roomsJson = {
+  'groups': [
+    {
+      'id': 14114,
+      'name': 'Group Study Rooms',
+      'free_now': 1,
+      'total': 2,
+      'updated_at': '2026-10-09T17:00:00-04:00',
+      'error': null,
+      'rooms': [
+        {
+          'id': 1,
+          'name': 'LL2 Group Study Room 10',
+          'floor': 'LL2',
+          'capacity': 6,
+          'state': 'free',
+          'free_until': '2026-10-09T19:30:00-04:00',
+          'next_free_at': null,
+          'booking_url': 'https://nyu.libcal.com/space/1',
+        },
+        {
+          'id': 2,
+          'name': 'LL2 Group Study Room 11',
+          'floor': 'LL2',
+          'capacity': 4,
+          'state': 'booked',
+          'free_until': null,
+          'next_free_at': '2026-10-09T18:00:00-04:00',
+          'booking_url': 'https://nyu.libcal.com/space/2',
+        },
+      ],
+    },
+  ],
+};
+
 Future<void> pumpApp(WidgetTester tester, ApiClient api) async {
   await tester.pumpWidget(BobstApp(api: api));
   await tester.pump();
@@ -75,7 +113,7 @@ void main() {
     expect(find.text('5th Floor West'), findsOneWidget);
     expect(find.text('12 people  ·  17% full'), findsOneWidget);
     expect(find.text('5th Floor East'), findsOneWidget);
-    expect(find.text('SIMULATED'), findsNothing);
+    expect(find.text('Simulated data'), findsNothing);
   });
 
   testWidgets('overview label follows the six-step scale', (tester) async {
@@ -102,5 +140,22 @@ void main() {
 
     expect(find.text('60 people  ·  Very busy'), findsOneWidget);
     expect(find.text('12 people  ·  Quite empty'), findsOneWidget);
+  });
+
+  testWidgets('rooms tab lists live availability', (tester) async {
+    await pumpApp(tester, fakeApi());
+
+    await tester.tap(find.text('Rooms').last);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Group Study Rooms  1/2'), findsOneWidget);
+    expect(find.text('LL2 Group Study Room 10'), findsOneWidget);
+    expect(find.textContaining('Free until'), findsOneWidget);
+    expect(find.textContaining('Booked · free at'), findsOneWidget);
+
+    await tester.tap(find.text('Free right now only'));
+    await tester.pump();
+    expect(find.text('LL2 Group Study Room 11'), findsNothing);
   });
 }
