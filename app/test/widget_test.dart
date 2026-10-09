@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:bobst/main.dart';
 import 'package:bobst/services/api_client.dart';
-import 'package:bobst/widgets/building_view.dart';
+import 'package:bobst/widgets/floor_plan.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -120,24 +120,43 @@ void main() {
     expect(find.text('NOT TOO BUSY'), findsOneWidget);
   });
 
-  testWidgets('floors tab shows headcount and expands into areas', (
-    tester,
-  ) async {
+  testWidgets('floor card opens its floor page and back', (tester) async {
     await pumpApp(tester, fakeApi());
-
     await tester.tap(find.text('Floors').last);
     await tester.pumpAndSettle(const Duration(milliseconds: 300));
 
+    // Card: mini plan + headline, no area details yet.
+    expect(find.byType(FloorPlanDiagram), findsOneWidget);
     expect(find.text('5th Floor'), findsOneWidget);
-    expect(find.text('72'), findsOneWidget);
-    expect(find.text('Not too busy'), findsOneWidget);
-    expect(find.text('60 people  ·  Very busy'), findsNothing);
+    expect(
+      find.textContaining('Not too busy', findRichText: true),
+      findsOneWidget,
+    );
+    expect(find.text('Quite empty'), findsNothing);
 
     await tester.tap(find.text('5th Floor'));
-    await tester.pumpAndSettle(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
 
-    expect(find.text('60 people  ·  Very busy'), findsOneWidget);
-    expect(find.text('12 people  ·  Quite empty'), findsOneWidget);
+    // Page: big plan labelled by side, plus a row per area.
+    expect(find.text('East'), findsWidgets);
+    expect(find.text('Very busy'), findsWidgets);
+    expect(find.text('Quite empty'), findsWidgets);
+
+    // Tapping a side selects it.
+    await tester.tap(find.text('West').first);
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('60 people'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('60 people'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    expect(find.text('Quite empty'), findsNothing);
+    expect(find.text('5th Floor'), findsOneWidget);
   });
 
   testWidgets('rooms tab lists live availability', (tester) async {
@@ -155,33 +174,6 @@ void main() {
     await tester.tap(find.byType(AdaptiveSwitch));
     await tester.pump();
     expect(find.text('LL2 Group Study Room 11'), findsNothing);
-  });
-
-  testWidgets('building turns 3D when dragged and snaps back flat', (
-    tester,
-  ) async {
-    await pumpApp(tester, fakeApi());
-    await tester.tap(find.text('Building').last);
-    await tester.pump();
-
-    final view = find.byType(BuildingView);
-    BuildingViewState state() => tester.state<BuildingViewState>(view);
-    expect(state().isFlat, isTrue);
-
-    // A big drag rotates it well away from the front: stays 3D.
-    await tester.drag(view, const Offset(150, 40));
-    await tester.pumpAndSettle(const Duration(milliseconds: 50));
-    expect(state().isFlat, isFalse);
-    expect(find.byTooltip('Flat view'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Flat view'));
-    await tester.pumpAndSettle(const Duration(milliseconds: 50));
-    expect(state().isFlat, isTrue);
-
-    // A small nudge near the front snaps straight back to flat.
-    await tester.drag(view, const Offset(10, 0));
-    await tester.pumpAndSettle(const Duration(milliseconds: 50));
-    expect(state().isFlat, isTrue);
   });
 
   testWidgets('floors tab sorts and filters areas', (tester) async {
@@ -210,40 +202,5 @@ void main() {
     await pick('Quiet');
     expect(find.text('5th Floor West'), findsOneWidget);
     expect(find.text('5th Floor East'), findsNothing);
-  });
-
-  testWidgets('tapping a floor flies in to its plan and back', (tester) async {
-    await pumpApp(tester, fakeApi());
-    await tester.tap(find.text('Building').last);
-    await tester.pump();
-
-    tester.widget<BuildingView>(find.byType(BuildingView)).onTapFloor('5');
-    await tester.pumpAndSettle(const Duration(milliseconds: 50));
-
-    // Plan: each side labelled with its busyness, streets for orientation.
-    expect(find.text('5th Floor'), findsWidgets);
-    expect(find.text('EAST'), findsOneWidget);
-    expect(find.text('WEST'), findsOneWidget);
-    expect(find.text('Washington Square Park'), findsOneWidget);
-    expect(find.text('Open atrium'), findsOneWidget);
-    expect(find.text('No study space'), findsNWidgets(2)); // north + south
-
-    // Tapping a side highlights it; the areas list sits below.
-    await tester.tap(find.text('EAST'));
-    await tester.pumpAndSettle(const Duration(milliseconds: 50));
-    await tester.scrollUntilVisible(
-      find.text('Areas'),
-      200,
-      scrollable: find.byType(Scrollable).last,
-    );
-    expect(find.text('Areas'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Back to building'));
-    await tester.pumpAndSettle(const Duration(milliseconds: 50));
-    expect(find.text('Washington Square Park'), findsNothing);
-    expect(
-      tester.state<BuildingViewState>(find.byType(BuildingView)).isOpen,
-      isFalse,
-    );
   });
 }

@@ -13,3 +13,9 @@ Color colorFor(Busyness level) => switch (level) {
 };
 
 const nyuViolet = Color(0xFF57068C);
+
+/// Darker shade of a busyness colour, readable as text on light backgrounds.
+Color deepen(Color c) {
+  final hsl = HSLColor.fromColor(c);
+  return hsl.withLightness(hsl.lightness.clamp(0, 0.36)).toColor();
+}

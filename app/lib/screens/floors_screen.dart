@@ -1,8 +1,12 @@
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/bobst.dart';
+import '../theme/busyness_colors.dart';
 import '../widgets/busyness_pill.dart';
+import '../widgets/floor_plan.dart';
+import 'floor_page.dart';
 import '../widgets/updated_label.dart';
 
 enum _Grouping { floors, areas }
@@ -23,10 +27,14 @@ class FloorsScreen extends StatefulWidget {
     super.key,
     required this.status,
     required this.onRefresh,
+    required this.live,
   });
 
   final BobstStatus status;
   final Future<void> Function() onRefresh;
+
+  /// Latest data, handed to floor pages so they stay live while open.
+  final ValueListenable<BobstStatus?> live;
 
   @override
   State<FloorsScreen> createState() => _FloorsScreenState();
@@ -100,7 +108,7 @@ class _FloorsScreenState extends State<FloorsScreen> {
       final shown = floors.where((f) => f.areas.any(_matches)).toList();
       items = [
         for (final floor in _sorted(shown, (f) => f.fullness))
-          FloorCard(key: ValueKey(floor.id), floor: floor),
+          FloorCard(key: ValueKey(floor.id), floor: floor, live: widget.live),
       ];
     } else {
       final areas = [
@@ -228,144 +236,78 @@ class _AreaCard extends StatelessWidget {
   }
 }
 
-class FloorCard extends StatefulWidget {
-  const FloorCard({super.key, required this.floor});
+/// A floor at a glance: mini overhead plan (each side's busyness) plus the
+/// headline. Tapping grows the plan into the full floor page.
+class FloorCard extends StatelessWidget {
+  const FloorCard({super.key, required this.floor, required this.live});
 
   final Floor floor;
-
-  @override
-  State<FloorCard> createState() => _FloorCardState();
-}
-
-class _FloorCardState extends State<FloorCard> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final floor = widget.floor;
-    final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurfaceVariant;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => setState(() => _expanded = !_expanded),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          floor.name,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Text(
-                          floor.noise.label,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: muted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Text(
-                    '${floor.occupancy}',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text('people', style: theme.textTheme.bodySmall),
-                ],
-              ),
-              const SizedBox(height: 10),
-              FullnessBar(fullness: floor.fullness, busyness: floor.busyness),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  BusynessPill(busyness: floor.busyness),
-                  const Spacer(),
-                  if (floor.areas.length > 1) ...[
-                    Text(
-                      '${floor.areas.length} areas',
-                      style: theme.textTheme.bodySmall?.copyWith(color: muted),
-                    ),
-                    AnimatedRotation(
-                      turns: _expanded ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 200),
-                      child: Icon(Icons.expand_more, color: muted),
-                    ),
-                  ],
-                ],
-              ),
-              AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                alignment: Alignment.topCenter,
-                child: _expanded && floor.areas.length > 1
-                    ? Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: Column(
-                          children: [
-                            for (final area in floor.areas)
-                              _AreaRow(area: area),
-                          ],
-                        ),
-                      )
-                    : const SizedBox(width: double.infinity),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AreaRow extends StatelessWidget {
-  const _AreaRow({required this.area});
-
-  final Area area;
+  final ValueListenable<BobstStatus?> live;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  area.name,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () =>
+              Navigator.of(context)
+                  .push(FloorPage.route(floorId: floor.id, live: live)),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 64,
+                  child: Hero(
+                    tag: floorPlanTag(floor.id),
+                    createRectTween: straightRectTween,
+                    child: FloorPlanDiagram(floor: floor),
                   ),
                 ),
-              ),
-              Text(
-                '${area.occupancy} people  ·  ${area.busyness.label}',
-                style: theme.textTheme.bodySmall,
-              ),
-            ],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Hero(
+                        tag: floorTitleTag(floor.id),
+                        createRectTween: straightRectTween,
+                        child: FloorTitle(floor: floor),
+                      ),
+                      const SizedBox(height: 2),
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: floor.busyness.label,
+                              style: TextStyle(
+                                color: deepen(colorFor(floor.busyness)),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            TextSpan(text: '  ·  ${floor.occupancy} people'),
+                          ],
+                        ),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 6),
-          FullnessBar(
-            fullness: area.fullness,
-            busyness: area.busyness,
-            height: 5,
-          ),
-        ],
+        ),
       ),
     );
   }

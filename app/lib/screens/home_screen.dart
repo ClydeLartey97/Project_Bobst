@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 
 import '../models/bobst.dart';
 import '../services/api_client.dart';
-import 'building_screen.dart';
 import 'developer_screen.dart';
 import 'floors_screen.dart';
 import 'overview_screen.dart';
@@ -27,6 +26,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   BobstStatus? _status;
+  // Same data as [_status], for pages pushed on top that need live updates.
+  final _live = ValueNotifier<BobstStatus?>(null);
   Object? _error;
   Timer? _timer;
   int _tab = 0;
@@ -41,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _live.dispose();
     super.dispose();
   }
 
@@ -52,6 +54,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _status = status;
         _error = null;
       });
+      _live.value = status;
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e);
@@ -82,11 +85,6 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: native ? 'square.stack.3d.up' : Icons.layers_outlined,
             selectedIcon: native ? 'square.stack.3d.up.fill' : Icons.layers,
             label: 'Floors',
-          ),
-          AdaptiveNavigationDestination(
-            icon: native ? 'building.2' : Icons.apartment_outlined,
-            selectedIcon: native ? 'building.2.fill' : Icons.apartment,
-            label: 'Building',
           ),
           AdaptiveNavigationDestination(
             icon: native
@@ -128,9 +126,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return switch (_tab) {
       0 => OverviewScreen(status: status, onRefresh: _load),
-      1 => FloorsScreen(status: status, onRefresh: _load),
-      2 => BuildingScreen(status: status),
-      3 => RoomsScreen(api: widget.api),
+      1 => FloorsScreen(status: status, onRefresh: _load, live: _live),
+      2 => RoomsScreen(api: widget.api),
       _ => DeveloperScreen(api: widget.api, status: status, onChanged: _load),
     };
   }
