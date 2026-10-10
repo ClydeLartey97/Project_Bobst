@@ -29,6 +29,21 @@ class FloorPlanDiagram extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Thumbnails (no labels, no taps) are one cached drawing rather than a
+    // dozen widgets each, which keeps long lists cheap to scroll.
+    if (detail <= 0 && onTapArea == null && selectedAreaId == null) {
+      return AspectRatio(
+        aspectRatio: 1,
+        child: RepaintBoundary(
+          child: CustomPaint(
+            painter: _ThumbnailPainter(
+              floor,
+              Theme.of(context).colorScheme.surfaceContainerHighest,
+            ),
+          ),
+        ),
+      );
+    }
     return AspectRatio(
       aspectRatio: 1,
       child: LayoutBuilder(
@@ -96,6 +111,61 @@ class FloorPlanDiagram extends StatelessWidget {
         },
       ),
     );
+  }
+}
+
+/// Same layout as the full diagram, painted in one pass.
+class _ThumbnailPainter extends CustomPainter {
+  _ThumbnailPainter(this.floor, this.emptyColor);
+
+  final Floor floor;
+  final Color emptyColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.shortestSide;
+    final band = s * (_outer - _inner) / (2 * _outer);
+    final gap = s * 0.025;
+    final radius = Radius.circular(s * 0.05);
+    final middle = s - 2 * band - gap;
+    final bySide = <Side, Area>{
+      for (final area in floor.areas)
+        for (final side in area.sides) side: area,
+    };
+    final rects = {
+      Side.north: Rect.fromLTWH(0, 0, s, band - gap / 2),
+      Side.south: Rect.fromLTWH(0, s - band + gap / 2, s, band - gap / 2),
+      Side.west: Rect.fromLTWH(0, band + gap / 2, band - gap / 2, middle),
+      Side.east: Rect.fromLTWH(
+        s - band + gap / 2,
+        band + gap / 2,
+        band - gap / 2,
+        middle,
+      ),
+    };
+    for (final MapEntry(key: side, value: rect) in rects.entries) {
+      final area = bySide[side];
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, radius),
+        Paint()..color = area == null ? emptyColor : colorFor(area.busyness),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ThumbnailPainter old) =>
+      old.emptyColor != emptyColor || !_sameColours(old.floor, floor);
+
+  /// Only repaint when a side's colour actually changes.
+  static bool _sameColours(Floor a, Floor b) {
+    if (a.areas.length != b.areas.length) return false;
+    for (var i = 0; i < a.areas.length; i++) {
+      if (a.areas[i].busyness != b.areas[i].busyness ||
+          a.areas[i].id != b.areas[i].id) {
+        return false;
+      }
+    }
+    return true;
   }
 }
 

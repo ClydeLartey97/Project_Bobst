@@ -77,25 +77,28 @@ class _RoomsScreenState extends State<RoomsScreen> {
         ? group.rooms.where((r) => r.state == RoomState.free).toList()
         : group.rooms;
 
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          MediaQuery.paddingOf(context).top + 16,
-          16,
-          120,
-        ),
-        children: [
-          Text(
-            'Study Rooms',
-            style: theme.textTheme.headlineLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
+    // Header stays put: its native controls are embedded iOS views, which
+    // are expensive to move every frame while a list scrolls.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            MediaQuery.paddingOf(context).top + 16,
+            16,
+            8,
           ),
-          const SizedBox(height: 16),
-          Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                'Study Rooms',
+                style: theme.textTheme.headlineLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 16),
               AdaptivePopupMenuButton.text<int>(
                 label: '${group.name}  ${group.freeNow}/${group.total} free',
                 buttonStyle: PopupButtonStyle.gray,
@@ -111,40 +114,44 @@ class _RoomsScreenState extends State<RoomsScreen> {
                 ],
                 onSelected: (i, _) => setState(() => _selected = i),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const Expanded(child: Text('Free right now only')),
-              AdaptiveSwitch(
-                value: _freeOnly,
-                onChanged: (v) => setState(() => _freeOnly = v),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Expanded(child: Text('Free right now only')),
+                  AdaptiveSwitch(
+                    value: _freeOnly,
+                    onChanged: (v) => setState(() => _freeOnly = v),
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          if (group.total == 0)
-            _Message(
-              group.error != null
-                  ? "Couldn't reach LibCal for ${group.name}. Retrying soon."
-                  : 'Fetching ${group.name} from LibCal…',
-            )
-          else if (rooms.isEmpty)
-            const _Message('Nothing free right now.')
-          else
-            for (final room in rooms) _RoomTile(room: room),
-          if (group.updatedAt case final updated?)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                'Availability checked ${_clock(context, updated)}',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall,
-              ),
-            ),
-        ],
-      ),
+        ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _load,
+            child: group.total == 0 || rooms.isEmpty
+                ? ListView(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    children: [
+                      _Message(
+                        group.total > 0
+                            ? 'Nothing free right now.'
+                            : group.error != null
+                            ? "Couldn't reach LibCal for ${group.name}. "
+                                  'Retrying soon.'
+                            : 'Fetching ${group.name} from LibCal…',
+                      ),
+                    ],
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
+                    itemCount: rooms.length,
+                    itemBuilder: (_, i) => _RoomTile(room: rooms[i]),
+                  ),
+          ),
+        ),
+      ],
     );
   }
 }

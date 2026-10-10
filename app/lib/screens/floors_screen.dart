@@ -96,6 +96,9 @@ class _FloorsScreenState extends State<FloorsScreen> {
     );
   }
 
+  // Bottom padding keeps the last row clear of the floating tab bar.
+  static const _listPadding = EdgeInsets.fromLTRB(16, 4, 16, 120);
+
   bool _matches(Area area) => _noise == null || area.noise == _noise;
 
   @override
@@ -103,60 +106,78 @@ class _FloorsScreenState extends State<FloorsScreen> {
     final theme = Theme.of(context);
     final floors = widget.status.floors;
 
-    final List<Widget> items;
+    // Builders, so only on-screen rows are built.
+    final Widget list;
     if (_grouping == _Grouping.floors) {
-      final shown = floors.where((f) => f.areas.any(_matches)).toList();
-      items = [
-        for (final floor in _sorted(shown, (f) => f.fullness))
-          FloorCard(key: ValueKey(floor.id), floor: floor, live: widget.live),
-      ];
+      final shown = _sorted(
+        floors.where((f) => f.areas.any(_matches)).toList(),
+        (f) => f.fullness,
+      );
+      list = ListView.builder(
+        padding: _listPadding,
+        itemCount: shown.length,
+        itemBuilder: (_, i) => FloorCard(
+          key: ValueKey(shown[i].id),
+          floor: shown[i],
+          live: widget.live,
+        ),
+      );
     } else {
-      final areas = [
+      final areas = _sorted([
         for (final floor in floors) ...floor.areas.where(_matches),
-      ];
-      items = [
-        for (final area in _sorted(areas, (a) => a.fullness))
-          _AreaCard(key: ValueKey(area.label), area: area),
-      ];
+      ], (a) => a.fullness);
+      list = ListView.builder(
+        padding: _listPadding,
+        itemCount: areas.length,
+        itemBuilder: (_, i) =>
+            _AreaCard(key: ValueKey(areas[i].label), area: areas[i]),
+      );
     }
 
-    return RefreshIndicator(
-      onRefresh: widget.onRefresh,
-      child: ListView(
-        // Bottom padding keeps the last item clear of the floating tab bar.
-        padding: EdgeInsets.fromLTRB(
-          16,
-          MediaQuery.paddingOf(context).top + 16,
-          16,
-          120,
-        ),
-        children: [
-          Row(
+    // Header stays put: the native controls in it are embedded iOS views,
+    // which are expensive to move every frame while a list scrolls.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            MediaQuery.paddingOf(context).top + 16,
+            16,
+            12,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  'Floors',
-                  style: theme.textTheme.headlineLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Floors',
+                      style: theme.textTheme.headlineLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
-                ),
+                  _filterMenu(),
+                ],
               ),
-              _filterMenu(),
+              const SizedBox(height: 2),
+              UpdatedLabel(updatedAt: widget.status.updatedAt),
+              const SizedBox(height: 16),
+              AdaptiveSegmentedControl(
+                labels: const ['Floors', 'Areas'],
+                selectedIndex: _grouping.index,
+                onValueChanged: (i) =>
+                    setState(() => _grouping = _Grouping.values[i]),
+              ),
             ],
           ),
-          const SizedBox(height: 2),
-          UpdatedLabel(updatedAt: widget.status.updatedAt),
-          const SizedBox(height: 16),
-          AdaptiveSegmentedControl(
-            labels: const ['Floors', 'Areas'],
-            selectedIndex: _grouping.index,
-            onValueChanged: (i) =>
-                setState(() => _grouping = _Grouping.values[i]),
-          ),
-          const SizedBox(height: 16),
-          ...items,
-        ],
-      ),
+        ),
+        Expanded(
+          child: RefreshIndicator(onRefresh: widget.onRefresh, child: list),
+        ),
+      ],
     );
   }
 }

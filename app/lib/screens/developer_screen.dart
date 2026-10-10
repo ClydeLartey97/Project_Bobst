@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../models/bobst.dart';
@@ -127,7 +127,7 @@ class _DeveloperScreenState extends State<DeveloperScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              child: AdaptiveSegmentedControl(
+              child: _Segmented(
                 labels: const ['Today', 'M', 'T', 'W', 'T', 'F', 'S', 'S'],
                 selectedIndex: (settings.weekday ?? -1) + 1,
                 onValueChanged: (i) => _update(
@@ -142,7 +142,7 @@ class _DeveloperScreenState extends State<DeveloperScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              child: AdaptiveSegmentedControl(
+              child: _Segmented(
                 labels: const ['Calendar', 'On', 'Off'],
                 selectedIndex: switch (settings.finals) {
                   null => 0,
@@ -307,7 +307,7 @@ class _LabeledSlider extends StatelessWidget {
             child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
           ),
           Expanded(
-            child: AdaptiveSlider(
+            child: CupertinoSlider(
               value: value.clamp(0, max),
               max: max,
               divisions: divisions,
@@ -347,7 +347,7 @@ class _FloorOverride extends StatelessWidget {
         if (forced != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: AdaptiveSlider(
+            child: CupertinoSlider(
               value: forced,
               divisions: 20,
               onChanged: onChanged,
@@ -358,7 +358,38 @@ class _FloorOverride extends StatelessWidget {
   }
 }
 
-/// Label (and optional detail) with a native switch on the right.
+/// iOS-style segmented control drawn by Flutter. This tab is a long scrolling
+/// list, so it avoids embedded native views, which are costly to scroll.
+class _Segmented extends StatelessWidget {
+  const _Segmented({
+    required this.labels,
+    required this.selectedIndex,
+    required this.onValueChanged,
+  });
+
+  final List<String> labels;
+  final int selectedIndex;
+  final ValueChanged<int> onValueChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoSlidingSegmentedControl<int>(
+      groupValue: selectedIndex,
+      children: {
+        for (final (i, label) in labels.indexed)
+          i: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Text(label),
+          ),
+      },
+      onValueChanged: (i) {
+        if (i != null) onValueChanged(i);
+      },
+    );
+  }
+}
+
+/// Label (and optional detail) with a switch on the right.
 class _SwitchRow extends StatelessWidget {
   const _SwitchRow({
     required this.label,
@@ -394,7 +425,7 @@ class _SwitchRow extends StatelessWidget {
               ],
             ),
           ),
-          AdaptiveSwitch(value: value, onChanged: onChanged),
+          CupertinoSwitch(value: value, onChanged: onChanged),
         ],
       ),
     );
