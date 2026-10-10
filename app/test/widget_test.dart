@@ -197,7 +197,6 @@ void main() {
 
     await pick('Least busy first');
     expect(y('5th Floor West'), lessThan(y('5th Floor East')));
-    expect(find.text('Least busy first · Any noise'), findsOneWidget);
 
     await pick('Quiet');
     expect(find.text('5th Floor West'), findsOneWidget);

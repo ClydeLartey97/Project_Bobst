@@ -153,14 +153,7 @@ class _FloorsScreenState extends State<FloorsScreen> {
             onValueChanged: (i) =>
                 setState(() => _grouping = _Grouping.values[i]),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '${_sort.label} · ${_noise?.label ?? 'Any noise'}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           ...items,
         ],
       ),
