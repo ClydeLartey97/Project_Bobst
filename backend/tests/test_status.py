@@ -58,12 +58,16 @@ def test_finals_and_weekends():
     assert at(14, day=saturday).building.occupancy < normal
 
 
-def test_changes_smoothly_minute_to_minute():
-    t = WEDNESDAY.replace(hour=13, minute=10)
-    a = current_status(t).building.occupancy
-    b = current_status(t + timedelta(minutes=1)).building.occupancy
-    assert a != b
-    assert abs(a - b) < 0.02 * at(13).building.capacity
+def test_updates_every_five_minutes_on_the_five():
+    def total(minute, second=0):
+        t = WEDNESDAY.replace(hour=13, minute=minute, second=second)
+        return current_status(t).building.occupancy
+
+    # Steady within a window...
+    assert total(10) == total(12) == total(14, 59)
+    # ...then a new value at the next five, without a big jump.
+    assert total(15) != total(14, 59)
+    assert abs(total(15) - total(10)) < 0.03 * at(13).building.capacity
 
 
 def test_every_area_has_a_place_and_sides_dont_overlap():

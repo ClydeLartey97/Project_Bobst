@@ -17,8 +17,13 @@ _HOURLY_CURVE = [
 _FINALS = [((12, 8), (12, 21)), ((5, 4), (5, 17))]
 
 
+# Numbers hold steady for this long, then all update together, so changes
+# are easy to spot while monitoring.
+UPDATE_EVERY_MINUTES = 5
+
+
 class DummySource:
-    """Fake occupancy that drifts smoothly minute to minute.
+    """Fake occupancy that updates every 5 minutes, on the five.
 
     Built from: a daily curve, weekday/weekend and finals multipliers, a dip
     as people leave for class just before each hour, and slow per-area waves
@@ -26,6 +31,7 @@ class DummySource:
     """
 
     def occupancy_by_area(self, now: datetime) -> Dict[AreaKey, int]:
+        now = _start_of_window(now)
         minutes = now.timestamp() / 60
         base = (
             _daily_curve(now.hour + now.minute / 60)
@@ -44,6 +50,12 @@ class DummySource:
                 share = min(max(share, 0.0), 1.05)
                 result[(floor.id, area.id)] = round(area.capacity * share)
         return result
+
+
+def _start_of_window(now: datetime) -> datetime:
+    """Round down to :00, :05, :10… so values are fixed within each window."""
+    minute = now.minute - now.minute % UPDATE_EVERY_MINUTES
+    return now.replace(minute=minute, second=0, microsecond=0)
 
 
 def _daily_curve(hour: float) -> float:

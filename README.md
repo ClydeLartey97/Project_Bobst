@@ -9,7 +9,9 @@ app/       Flutter app. One codebase for iOS, Android, macOS and Windows.
 
 The backend owns all the logic and serves JSON at `/api/status`; the app just
 displays it. Occupancy currently comes from `DummySource`
-(`backend/app/sources/dummy.py`). The real NYU feed will be another
+(`backend/app/sources/dummy.py`): made-up numbers that follow a realistic daily
+pattern and update every 5 minutes (on :00, :05, …), so changes are easy to
+monitor. The real NYU feed will be another
 `OccupancySource` implementation, swapped in at `backend/app/services.py`.
 
 Floors and their areas (e.g. "5th Floor East") live in `backend/app/floors.py`.
